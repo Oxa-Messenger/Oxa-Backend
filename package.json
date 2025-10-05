@@ -1,0 +1,49 @@
+{
+	"name": "chipher",
+	"version": "1.0.0",
+	"description": "Backend server for Chipher - a sercure, RAM-based real-time messaging app focused on privacy and  ephemeral chats mechanism.",
+	"main": "index.js",
+	"scripts": {
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"start": "node index.js",
+		"dev": "nodemon index.js"
+	},
+	"keywords": [
+		"chat",
+		"secure",
+		"messaging",
+		"ephemeral",
+		"nodejs",
+		"express",
+		"mongodb"
+	],
+	"author": "Abdullah Amir",
+	"license": "ISC",
+	"dependencies": {
+		"bcrypt": "^6.0.0",
+		"bcryptjs": "^3.0.2",
+		"body-parser": "^2.2.0",
+		"compression": "^1.8.1",
+		"cookie-parser": "^1.4.7",
+		"cors": "^2.8.5",
+		"crypto": "^1.0.1",
+		"dotenv": "^17.2.1",
+		"express": "^5.1.0",
+		"express-rate-limit": "^8.0.1",
+		"express-validator": "^7.2.1",
+		"helmet": "^8.1.0",
+		"jsonwebtoken": "^9.0.2",
+		"mongoose": "^8.16.5",
+		"morgan": "^1.10.1",
+		"multer": "^2.0.2",
+		"nodemailer": "^7.0.5",
+		"nodemon": "^3.1.10",
+		"passport": "^0.7.0",
+		"passport-local": "^1.0.0",
+		"qrcode": "^1.5.4",
+		"socket.io": "^4.8.1",
+		"uuid": "^11.1.0",
+		"validator": "^13.15.15",
+		"ws": "^8.18.3"
+	}
+}
