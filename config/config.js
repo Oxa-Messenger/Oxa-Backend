@@ -1,10 +1,4 @@
-// src/config/config.ts
-import dotenv from "dotenv";
-
-// Load environment variables from .env file
-dotenv.config();
-
-export const config = {
+const config = {
 	MONGO_URI: process.env.MONGO_URI,
 	SALT_ROUNDS: process.env.SALT_ROUNDS,
 	EMAIL_FROM: process.env.EMAIL_FROM,
@@ -13,3 +7,5 @@ export const config = {
 	CORS_ORIGIN: process.env.CORS_ORIGIN,
 	PORT: process.env.PORT,
 };
+
+module.exports = config;

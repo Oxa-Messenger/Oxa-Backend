@@ -1,11 +1,8 @@
 require("dotenv").config();
 const mongoose = require("mongoose");
-const { config } = require("./config/config");
+const config = require("./config/config");
 
-mongoose.connect(config.MONGO_URI, {
-	useNewUrlParser: true,
-	useUnifiedTopology: true,
-});
+mongoose.connect(config.MONGO_URI);
 const databaseConnection = mongoose.connection;
 
 databaseConnection.on("connected", () => {

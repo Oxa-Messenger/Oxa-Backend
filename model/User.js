@@ -7,7 +7,7 @@ const Contact = require("./subModels/Contact");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const { validate } = require("uuid");
-import { config } from "../config/config.js";
+const { config } = require("./../config/config");
 
 const userSchema = new mongoose.Schema(
 	{

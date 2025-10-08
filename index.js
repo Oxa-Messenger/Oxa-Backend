@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 const express = require("express");
 const http = require("http");
 const cors = require("cors");
@@ -22,7 +24,7 @@ app.use((req, res, next) => {
 
 // Routes
 const userRoutes = require("./routes/userRoutes");
-const { config } = require("./config/config");
+const config = require("./config/config");
 app.use("/user", userRoutes);
 
 const io = new Server(server, {

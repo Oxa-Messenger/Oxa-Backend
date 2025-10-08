@@ -7,7 +7,7 @@ const {
 const User = require("./../model/User");
 const ResetToken = require("./../model/ResetToken");
 const nodemailer = require("nodemailer");
-const { config } = require("../config/config");
+const config = require("../config/config");
 
 // Endpoints##################################
 
