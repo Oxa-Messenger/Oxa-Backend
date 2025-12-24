@@ -45,4 +45,6 @@ io.use((socket, next) => {
 require("./socketHandler")(io);
 
 const PORT = config.PORT;
-server.listen(PORT, () => console.log(`Server is listening on PORT ${PORT}`));
+server.listen(PORT, "0.0.0.0", () =>
+	console.log(`Server is listening on PORT ${PORT}`)
+);
