@@ -1,0 +1,16 @@
+services:
+    mongodb:
+        image: mongo:latest
+        container_name: oxa-mongo
+        restart: always
+        ports:
+            - "27017:27017"
+        volumes:
+            - mongo_data:/data/db
+        environment:
+            MONGO_INITDB_DATABASE: oxa
+            MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+            MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+
+volumes:
+    mongo_data:
