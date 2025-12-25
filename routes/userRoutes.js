@@ -1,26 +1,38 @@
 const express = require("express");
+const crypto = require("crypto");
+const nodemailer = require("nodemailer");
 const router = express.Router();
+
+const User = require("./../model/User");
+const ResetToken = require("./../model/ResetToken");
 const {
 	authmiddleware,
 	generateToken,
 } = require("./../middleware/jwtAuthMiddleware");
-const User = require("./../model/User");
-const ResetToken = require("./../model/ResetToken");
-const nodemailer = require("nodemailer");
+const contactRoutes = require("./contactRoutes");
+const {
+	signupValidator,
+	loginValidator,
+	resetPasswordValidator,
+} = require("../validators/authValidator");
+const { validate } = require("../middleware/validationMiddleware");
 const config = require("../config/config");
+const { LoginL } = require("../validators/loginLimiter");
 
 // Endpoints##################################
 
+// Import contact routes
+router.use("/contacts", contactRoutes);
+
 // Signup
-router.post("/auth/signup", async (req, res) => {
+router.post("/auth/signup", signupValidator, validate, async (req, res) => {
 	try {
 		const data = req.body;
 		data.requestedMethod = req.method;
 
 		const newUser = new User(data);
 		const response = await newUser.save();
-
-		res.status(201).json({ message: "Signup successful", user: response });
+		res.status(201).json({ message: "Signup successful" });
 	} catch (error) {
 		if (error.name === "ValidationError") {
 			res.status(400).json({
@@ -28,7 +40,11 @@ router.post("/auth/signup", async (req, res) => {
 				details: error.message,
 			});
 		} else if (error.code === 11000) {
-			res.status(409).json({ error: "Email already exists" });
+			res.status(409).json({
+				text1: "Signup Failed",
+				text2: "username or email already exists",
+				success: false,
+			});
 		} else {
 			res.status(500).json({ error: "Internal Server Error" });
 		}
@@ -36,40 +52,52 @@ router.post("/auth/signup", async (req, res) => {
 });
 
 // Login
-router.post("/auth/login", async (req, res) => {
-	try {
-		const { email, password } = req.body;
+router.post(
+	"/auth/login",
+	LoginL,
+	loginValidator,
+	validate,
+	async (req, res) => {
+		try {
+			const { identifier, password } = req.body;
 
-		const user = await User.findOne({ email }).select("+password");
-		if (!user) {
-			return res.json({ success: false });
+			if (!identifier || !password) {
+				return res.status(400).json({ success: false });
+			}
+
+			const user = await User.findOne({
+				$or: [
+					{ email: identifier.toLowerCase() },
+					{ username: identifier },
+				],
+			}).select("+password");
+
+			if (!user) {
+				return res.json({ success: false });
+			}
+
+			const isPasswordMatched = await user.comparePassword(password);
+			if (!isPasswordMatched) {
+				return res.json({ success: false });
+			}
+
+			const payload = {
+				id: user._id,
+			};
+
+			const token = generateToken(payload);
+			await User.findByIdAndUpdate(user._id, { token });
+
+			res.status(200).json({
+				success: true,
+				token,
+			});
+		} catch (error) {
+			console.error("Login error:", error);
+			res.status(500).json({ success: false });
 		}
-
-		const isPasswordMatched = await user.comparePassword(password);
-		if (!isPasswordMatched) {
-			return res.json({ success: false });
-		}
-
-		const payload = {
-			id: user._id,
-			email: user.email,
-		};
-
-		const Token = generateToken(payload);
-		await User.findOneAndUpdate(
-			{ _id: user._id },
-			{ token: Token }, // use the new token you just created
-			{ runValidators: false, new: true, context: "query" }
-		);
-
-		res.status(200).json({
-			token: Token,
-			success: true,
-		});
-	} catch (error) {
-		res.status(500).json({ error: "Internal Server Error" });
 	}
-});
+);
 
 // Logout
 router.post("/auth/logout", authmiddleware, async (req, res) => {
@@ -94,14 +122,16 @@ router.post("/auth/forgot-password", async (req, res) => {
 		}
 
 		// Generate random token
-		const resetToken = Math.floor(
-			100000 + Math.random() * 900000
-		).toString();
+		const rawToken = crypto.randomBytes(3).toString("hex");
+		const tokenHash = crypto
+			.createHash("sha256")
+			.update(rawToken)
+			.digest("hex");
 
 		// Save token in DB with expiration (10 mins)
 		await ResetToken.create({
 			userId: user._id,
-			token: resetToken,
+			token: tokenHash,
 			expiresAt: new Date(Date.now() + 10 * 60 * 1000),
 		});
 
@@ -114,10 +144,9 @@ router.post("/auth/forgot-password", async (req, res) => {
 		});
 
 		await transporter.sendMail({
-			from: config.EMAIL_FROM,
 			to: email,
-			subject: "Reset Your Password",
-			text: `Your password reset code is: ${resetToken}`,
+			subject: "Reset Password",
+			text: `Your reset code is ${resetToken}`,
 		});
 
 		return res.status(200).json({ success: true });
@@ -127,42 +156,50 @@ router.post("/auth/forgot-password", async (req, res) => {
 });
 
 // Forgot Password Reset Code Check
-router.post("/auth/reset-password", async (req, res) => {
-	try {
-		const { token, password } = req.body;
-		if (!token || !password) {
+router.post(
+	"/auth/reset-password",
+	resetPasswordValidator,
+	validate,
+	async (req, res) => {
+		try {
+			const { token, password } = req.body;
+			if (!token || !password) {
+				return res
+					.status(400)
+					.json({ success: false, message: "Enter missing fields" });
+			}
+
+			const tokenHash = crypto
+				.createHash("sha256")
+				.update(token)
+				.digest("hex");
+
+			const reset = await ResetToken.findOne({
+				token: tokenHash,
+				expiresAt: { $gt: new Date() },
+			}).populate("userId");
+
+			if (!reset) return res.status(400).json({ success: false });
+
+			const user = reset.userId.password;
+			user.password = password;
+
+			await User.findOneAndUpdatePassword(
+				{ _id: user._id },
+				{ password: user.password },
+				{ runValidators: false }
+			);
+
+			await ResetToken.deleteOne({ token });
+
+			return res.status(200).json({ success: true });
+		} catch (err) {
 			return res
-				.status(400)
-				.json({ success: false, message: "Enter missing fields" });
+				.status(500)
+				.json({ success: false, message: "Server error" });
 		}
-
-		const resetToken = await ResetToken.findOne({ token }).populate(
-			"userId"
-		);
-		if (!resetToken || resetToken.expiresAt < new Date()) {
-			return res
-				.status(400)
-				.json({ success: false, message: "Invalid or expired token" });
-		}
-
-		const user = resetToken.userId;
-		user.password = password;
-
-		await User.findOneAndUpdatePassword(
-			{ _id: user._id },
-			{ password: user.password },
-			{ runValidators: false }
-		);
-
-		await ResetToken.deleteOne({ token });
-
-		return res.status(200).json({ success: true });
-	} catch (err) {
-		return res
-			.status(500)
-			.json({ success: false, message: "Server error" });
 	}
-});
+);
 
 // #######################################################
 // #######################################################
@@ -220,8 +257,7 @@ router.get("/home", authmiddleware, async (req, res) => {
 				typeof contact === "object" && contact._id
 					? {
 							otherUserId: contact._id,
-							otherUsername: contact.username,
-							otherEmail: contact.email,
+							otherAlias: contact.alias,
 					  }
 					: contact
 			),

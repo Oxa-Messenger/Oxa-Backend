@@ -5,13 +5,12 @@ const Settings = require("./subModels/Settings");
 const ReportedUser = require("./subModels/ReportedUser");
 const Contact = require("./subModels/Contact");
 const bcrypt = require("bcrypt");
-const crypto = require("crypto");
 const { validate } = require("uuid");
-const { config } = require("./../config/config");
+const config = require("./../config/config");
 
 const userSchema = new mongoose.Schema(
 	{
-		name: { type: String, required: true, trim: true },
+		name: { type: String, trim: true },
 		online: { type: Boolean, default: false },
 		username: {
 			type: String,
@@ -36,8 +35,8 @@ const userSchema = new mongoose.Schema(
 		password: { type: String, required: true, minlength: 6, select: false },
 		country: { type: String, default: null, trim: true },
 		city: { type: String, default: null, trim: true },
-		publicKey: { type: String, required: true },
-		playIntegrityHash: { type: String, required: true },
+		//publicKey: { type: String, required: true }, commented for testing/limited time
+		//playIntegrityHash: { type: String, required: true }, commented for testing/limited time
 		token: { type: String, default: null },
 		joinedCommunities: {
 			type: [mongoose.Schema.Types.ObjectId],
