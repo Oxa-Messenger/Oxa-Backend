@@ -3,11 +3,13 @@ const { v4: uuidv4 } = require("uuid");
 module.exports = (io) => {
 	// userId -> socketId
 	const users = new Map();
+	// userId -> Set<roomId>
+	const userToRooms = new Map();
 	// socketId -> userId
 	const socketToUser = new Map();
-	// roomId -> Set<userId>
+	// roomId -> { users: Set, pairKey: string }
 	const rooms = new Map();
-	// canonical key for a set/pair of users -> roomId
+	// "id1:id2" -> roomId
 	const pairToRoom = new Map();
 
 	// config
@@ -28,21 +30,26 @@ module.exports = (io) => {
 					"register called with missing userId from socket",
 					socket.id
 				);
-				io.to(socket.id).emit("registered", {
+				return socket.emit("registered", {
 					ok: false,
 					err: "missing-userId",
 				});
-				return;
 			}
 
 			// if user already connected, force old socket to logout
 			const existingSocketId = users.get(userId);
 			if (existingSocketId && existingSocketId !== socket.id) {
-				io.to(existingSocketId).emit("force-logout", {
-					reason: "new-session",
-				});
-				// remove previous mapping (will be cleaned when old socket disconnects)
-				socketToUser.delete(existingSocketId);
+				console.log(`Kicking out old session for user ${userId}`);
+				const oldSocket = io.sockets.sockets.get(existingSocketId);
+				if (oldSocket) {
+					// Send a custom event so the frontend knows it was kicked
+					oldSocket.emit("session_terminated", {
+						reason: "Logged in from another device",
+					});
+
+					// 3. Forcefully disconnect the old socket
+					oldSocket.disconnect(true);
+				}
 			}
 
 			users.set(userId, socket.id);
@@ -51,7 +58,10 @@ module.exports = (io) => {
 
 			socket.broadcast.emit("user_online", { userId });
 
-			io.to(socket.id).emit("registered", { ok: true });
+			const onlineIds = Array.from(users.keys()); // needs updates. Only those who are in his contact should be sent
+			socket.emit("users_list", { users: onlineIds });
+
+			socket.emit("registered", { ok: true });
 			console.log(`registered user ${userId} -> ${socket.id}`);
 		});
 
@@ -63,28 +73,27 @@ module.exports = (io) => {
 		socket.on("get_or_create_room", ({ withUser }, cb) => {
 			const me = socket.data?.userId;
 			if (!me || !withUser) {
-				const err = "get_or_create_room missing params";
-				if (typeof cb === "function") cb({ error: err });
-				return;
+				return cb?.({ error: "Missing params" });
 			}
 
 			// canonical key for the pair
 			const key = sortedKeyFrom([me, withUser]);
+			let roomId = pairToRoom.get(key);
+			let reused = true;
 
-			if (pairToRoom.has(key)) {
-				const existing = pairToRoom.get(key);
-				if (typeof cb === "function")
-					cb({ roomId: existing, reused: true });
-				return;
+			if (!roomId) {
+				roomId = uuidv4();
+				pairToRoom.set(key, roomId);
+				rooms.set(roomId, {
+					users: new Set(),
+					initiator: me,
+					pairKey: key,
+				});
+				reused = false;
 			}
-
-			// create and register room
-			const roomId = uuidv4();
-			pairToRoom.set(key, roomId);
-			rooms.set(roomId, new Set([me])); // only creator is present initially
 			console.log(`created 1:1 room ${roomId} for ${key}`);
 
-			if (typeof cb === "function") cb({ roomId, reused: false });
+			cb?.({ roomId, reused });
 		});
 
 		/* --------------------
@@ -96,14 +105,27 @@ module.exports = (io) => {
 
 			socket.join(roomId);
 
-			if (!rooms.has(roomId)) rooms.set(roomId, new Set());
-			rooms.get(roomId).add(me);
+			if (!rooms.has(roomId))
+				rooms.set(roomId, {
+					users: new Set(),
+					pairKey: null,
+				});
 
-			// return list of peers (excluding self)
-			const peers = Array.from(rooms.get(roomId)).filter((u) => u !== me);
-			io.to(socket.id).emit("room:peers", { roomId, peers });
+			const room = rooms.get(roomId);
+			room.users.add(me);
+
+			if (!userToRooms.has(me)) userToRooms.set(me, new Set());
+			userToRooms.get(me).add(roomId);
+
+			socket.emit("room:sync", {
+				// in place of (io.to(socket.id).emit("room:peers", { roomId, peers });)
+				roomId,
+				peers: Array.from(room.users),
+				initiator: room.initiator,
+			});
 
 			socket.to(roomId).emit("room:user-joined", { roomId, userId: me });
+
 			console.log(`${me} joined ${roomId}`);
 		});
 
@@ -111,71 +133,24 @@ module.exports = (io) => {
 			const me = socket.data?.userId;
 			if (!me || !roomId) return;
 
+			const room = rooms.get(roomId);
+
+			if (room) {
+				room.users.delete(me);
+				userToRooms.get(me)?.delete(roomId);
+
+				socket
+					.to(roomId)
+					.emit("room:user-left", { roomId, userId: me });
+				console.log(`${me} left ${roomId}`);
+
+				if (room.users.size === 0) {
+					if (room.pairKey) pairToRoom.delete(room.pairKey);
+					rooms.delete(roomId);
+					console.log(`Room ${roomId} deleted (empty)`);
+				}
+			}
 			socket.leave(roomId);
-			rooms.get(roomId)?.delete(me);
-			socket.to(roomId).emit("room:user-left", { roomId, userId: me });
-			console.log(`${me} left ${roomId}`);
-
-			if (rooms.get(roomId)?.size === 0) {
-				rooms.delete(roomId);
-				// also remove pairToRoom entries that point to this room (cleanup)
-				for (const [k, v] of pairToRoom.entries()) {
-					if (v === roomId) pairToRoom.delete(k);
-				}
-			}
-		});
-
-		/* --------------------
-       1:1 direct signaling helpers (route by 'to' userId if possible)
-       - webrtc-offer: { to, sdp, meta? }
-       - webrtc-answer: { to, sdp }
-       - webrtc-ice: { to, candidate }
-       If 'to' is not present, we also allow 'room' broadcast fallback.
-       -------------------- */
-		socket.on("webrtc-offer", ({ to, sdp, meta, room }) => {
-			const from = socket.data?.userId;
-			if (!from) return;
-			if (to) {
-				const target = users.get(to);
-				if (target) {
-					io.to(target).emit("webrtc-offer", { from, sdp, meta });
-					return;
-				}
-			}
-			// fallback: broadcast to room (exclude sender)
-			if (room) {
-				socket.to(room).emit("webrtc-offer", { from, sdp, meta });
-			}
-		});
-
-		socket.on("webrtc-answer", ({ to, sdp, room }) => {
-			const from = socket.data?.userId;
-			if (!from) return;
-			if (to) {
-				const target = users.get(to);
-				if (target) {
-					io.to(target).emit("webrtc-answer", { from, sdp });
-					return;
-				}
-			}
-			if (room) {
-				socket.to(room).emit("webrtc-answer", { from, sdp });
-			}
-		});
-
-		socket.on("webrtc-ice", ({ to, candidate, room }) => {
-			const from = socket.data?.userId;
-			if (!from) return;
-			if (to) {
-				const target = users.get(to);
-				if (target) {
-					io.to(target).emit("webrtc-ice", { from, candidate });
-					return;
-				}
-			}
-			if (room) {
-				socket.to(room).emit("webrtc-ice", { from, candidate });
-			}
 		});
 
 		/* --------------------
@@ -190,53 +165,59 @@ module.exports = (io) => {
 			}
 		});
 
-		/* --------------------
-       Room listing convenience (optional)
-       -------------------- */
-		socket.on("room:list", (cb) => {
-			try {
-				const res = {};
-				for (const [roomId, set] of rooms.entries()) {
-					res[roomId] = Array.from(set);
+		// SIGNALING (Optimized)
+		const forwardSignal = (event, data) => {
+			const from = socket.data?.userId;
+			if (!from) return;
+
+			if (data.to) {
+				const targetSocket = users.get(data.to);
+				if (targetSocket) {
+					io.to(targetSocket).emit(event, { ...data, from });
+					return;
 				}
-				if (typeof cb === "function") cb({ ok: true, rooms: res });
-			} catch (err) {
-				if (typeof cb === "function")
-					cb({ ok: false, err: String(err) });
 			}
-		});
+			if (data.room) {
+				socket.to(data.room).emit(event, { ...data, from });
+			}
+		};
 
-		/* --------------------
-       Disconnect cleanup
-       -------------------- */
+		socket.on("webrtc-offer", (data) =>
+			forwardSignal("webrtc-offer", data)
+		);
+		socket.on("webrtc-answer", (data) =>
+			forwardSignal("webrtc-answer", data)
+		);
+		socket.on("webrtc-ice", (data) => forwardSignal("webrtc-ice", data));
+
 		socket.on("disconnect", () => {
-			const me = socketToUser.get(socket.id) || socket.data?.userId;
-			if (me) {
+			const me = socketToUser.get(socket.id);
+			if (!me) return;
+
+			// Only delete from 'users' if THIS socket is the current active one for that user
+			if (users.get(me) === socket.id) {
 				users.delete(me);
-				socketToUser.delete(socket.id);
-
 				socket.broadcast.emit("user_offline", { userId: me });
+			}
+			socketToUser.delete(socket.id);
 
-				// remove user from any rooms they're in
-				for (const [roomId, set] of rooms.entries()) {
-					if (set.has(me)) {
-						set.delete(me);
+			const activeRooms = userToRooms.get(me);
+			if (activeRooms) {
+				activeRooms.forEach((roomId) => {
+					const room = rooms.get(roomId);
+					if (room) {
+						room.users.delete(me);
 						socket
 							.to(roomId)
 							.emit("room:user-left", { roomId, userId: me });
-					}
-					if (set.size === 0) {
-						rooms.delete(roomId);
-						// cleanup pairToRoom references for deleted room
-						for (const [k, v] of pairToRoom.entries()) {
-							if (v === roomId) pairToRoom.delete(k);
+
+						if (room.users.size === 0) {
+							if (room.pairKey) pairToRoom.delete(room.pairKey);
+							rooms.delete(roomId);
 						}
 					}
-				}
-
-				console.log(`user ${me} disconnected`);
-			} else {
-				console.log("socket disconnected: ", socket.id);
+				});
+				userToRooms.delete(me);
 			}
 		});
 	});

@@ -60,6 +60,7 @@ router.post("/add", authmiddleware, async (req, res) => {
 		return res.status(201).json({
 			success: true,
 			message: "Contact added",
+			contact: { user: otherUser._id, alias: finalAlias },
 		});
 	} catch (err) {
 		console.error("Add contact error:", err);

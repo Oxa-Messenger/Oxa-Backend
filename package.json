@@ -1,7 +1,7 @@
 {
-	"name": "chipher",
+	"name": "oxa",
 	"version": "1.0.0",
-	"description": "Backend server for Chipher - a sercure, RAM-based real-time messaging app focused on privacy and  ephemeral chats mechanism.",
+	"description": "Backend server for Oxa - a sercure, RAM-based real-time messaging app focused on privacy and  ephemeral chats mechanism.",
 	"main": "index.js",
 	"scripts": {
 		"test": "echo \"Error: no test specified\" && exit 1",

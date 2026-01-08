@@ -253,14 +253,10 @@ router.get("/home", authmiddleware, async (req, res) => {
 				(user.joinedGroups || []).map((group) =>
 					typeof group === "object" && group._id ? group._id : group
 				) || [],
-			contacts: (user.contact || []).map((contact) =>
-				typeof contact === "object" && contact._id
-					? {
-							otherUserId: contact._id,
-							otherAlias: contact.alias,
-					  }
-					: contact
-			),
+			contacts: (user.contact || []).map((contact) => ({
+				user: contact.user,
+				alias: contact.alias,
+			})),
 		};
 
 		res.status(200).json({
