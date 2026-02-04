@@ -10,6 +10,7 @@ const {
 	generateToken,
 } = require("./../middleware/jwtAuthMiddleware");
 const contactRoutes = require("./contactRoutes");
+const sensitiveStuff = require("./sensitiveStuff");
 const {
 	signupValidator,
 	loginValidator,
@@ -23,6 +24,9 @@ const { LoginL } = require("../validators/loginLimiter");
 
 // Import contact routes
 router.use("/contacts", contactRoutes);
+
+// Import sensitive stuff routes
+router.use("/sensitive-stuff", sensitiveStuff);
 
 // Signup
 router.post("/auth/signup", signupValidator, validate, async (req, res) => {
