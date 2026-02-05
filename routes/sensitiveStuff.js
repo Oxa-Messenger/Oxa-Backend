@@ -6,7 +6,7 @@ const config = require("../config/config");
 // Endpoints##################################
 
 // return ice servers
-router.post("/ice-servers", authmiddleware, async (req, res) => {
+router.get("/ice-servers", authmiddleware, async (req, res) => {
 	try {
 		const response = await fetch(config.ICE_SERVERS_API_KEY);
 
