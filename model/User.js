@@ -11,7 +11,6 @@ const config = require("./../config/config");
 const userSchema = new mongoose.Schema(
 	{
 		name: { type: String, trim: true },
-		online: { type: Boolean, default: false },
 		username: {
 			type: String,
 			unique: true,

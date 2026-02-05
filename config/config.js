@@ -6,6 +6,7 @@ const config = {
 	JWT_SECRET: process.env.JWT_SECRET,
 	CORS_ORIGIN: process.env.CORS_ORIGIN,
 	PORT: process.env.PORT,
+	ICE_SERVERS_API_KEY: process.env.ICE_SERVER_API_KEY,
 };
 
 module.exports = config;
