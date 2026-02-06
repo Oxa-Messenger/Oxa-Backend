@@ -38,6 +38,7 @@ router.post("/auth/signup", signupValidator, validate, async (req, res) => {
 		const response = await newUser.save();
 		res.status(201).json({ message: "Signup successful" });
 	} catch (error) {
+		console.error("Signup error:", error);
 		if (error.name === "ValidationError") {
 			res.status(400).json({
 				error: "Validation Error",
@@ -111,6 +112,7 @@ router.post("/auth/logout", authmiddleware, async (req, res) => {
 
 		res.status(200).json({ success: true });
 	} catch (error) {
+		console.error("Logout error:", error);
 		res.status(500).json({ error: "Internal Server Error" });
 	}
 });
@@ -155,6 +157,7 @@ router.post("/auth/forgot-password", async (req, res) => {
 
 		return res.status(200).json({ success: true });
 	} catch (error) {
+		console.error("Forgot Password error:", error);
 		res.status(500).json({ success: false, message: "Server error" });
 	}
 });
@@ -198,6 +201,7 @@ router.post(
 
 			return res.status(200).json({ success: true });
 		} catch (err) {
+			console.error("Reset Password error:", err);
 			return res
 				.status(500)
 				.json({ success: false, message: "Server error" });
@@ -221,6 +225,7 @@ router.get("/profile", authmiddleware, async (req, res) => {
 
 		res.status(200).json({ message: user.email });
 	} catch (error) {
+		console.error("GET /profile error:", error);
 		res.status(500).json({ error: "Internal Server Error" });
 	}
 });
