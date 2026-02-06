@@ -36,22 +36,15 @@ router.post("/auth/signup", signupValidator, validate, async (req, res) => {
 
 		const newUser = new User(data);
 		const response = await newUser.save();
-		res.status(201).json({ message: "Signup successful" });
+		res.status(201).json();
 	} catch (error) {
 		console.error("Signup error:", error);
 		if (error.name === "ValidationError") {
-			res.status(400).json({
-				error: "Validation Error",
-				details: error.message,
-			});
+			res.status(400).json();
 		} else if (error.code === 11000) {
-			res.status(409).json({
-				text1: "Signup Failed",
-				text2: "username or email already exists",
-				success: false,
-			});
+			res.status(409).json();
 		} else {
-			res.status(500).json({ error: "Internal Server Error" });
+			res.status(500).json();
 		}
 	}
 });
@@ -74,12 +67,12 @@ router.post(
 			}).select("+password");
 
 			if (!user) {
-				return res.json({ success: false });
+				return res.status(400).json();
 			}
 
 			const isPasswordMatched = await user.comparePassword(password);
 			if (!isPasswordMatched) {
-				return res.json({ success: false });
+				return res.status(400).json();
 			}
 
 			const payload = {
@@ -90,12 +83,11 @@ router.post(
 			await User.findByIdAndUpdate(user._id, { token });
 
 			res.status(200).json({
-				success: true,
 				token,
 			});
 		} catch (error) {
 			console.error("Login error:", error);
-			res.status(500).json({ success: false });
+			res.status(500).json();
 		}
 	}
 );
@@ -106,10 +98,10 @@ router.post("/auth/logout", authmiddleware, async (req, res) => {
 		const userId = req.user.id;
 		await User.findByIdAndUpdate(userId, { token: null });
 
-		res.status(200).json({ success: true });
+		res.status(200).json();
 	} catch (error) {
 		console.error("Logout error:", error);
-		res.status(500).json({ error: "Internal Server Error" });
+		res.status(500).json();
 	}
 });
 
@@ -120,7 +112,7 @@ router.post("/auth/forgot-password", async (req, res) => {
 	try {
 		const user = await User.findOne({ email });
 		if (!user) {
-			return res.status(404).json({ success: false });
+			return res.status(404).json();
 		}
 
 		// Generate random token
@@ -151,10 +143,10 @@ router.post("/auth/forgot-password", async (req, res) => {
 			text: `Your reset code is ${rawToken}`,
 		});
 
-		return res.status(200).json({ success: true });
+		return res.status(200).json();
 	} catch (error) {
 		console.error("Forgot Password error:", error);
-		res.status(500).json({ success: false, message: "Server error" });
+		res.status(500).json();
 	}
 });
 
@@ -178,32 +170,21 @@ router.post(
 			});
 
 			if (!resetRecord) {
-				return res.status(400).json({
-					success: false,
-					message: "Invalid or expired reset code.",
-				});
+				return res.status(400).json();
 			}
 
 			const user = await User.findById(resetRecord.userId);
 			if (!user) {
-				return res.status(404).json({
-					success: false,
-					message: "User no longer exists.",
-				});
+				return res.status(404).json();
 			}
 
 			user.password = password;
 			await user.save(); // Triggers your hashing middleware automatically
 
-			return res.status(200).json({
-				success: true,
-				message: "Password updated successfully.",
-			});
+			return res.status(200).json();
 		} catch (err) {
 			console.error("Reset Password error:", err);
-			return res
-				.status(500)
-				.json({ success: false, message: "Server error" });
+			return res.status(500).json();
 		}
 	}
 );
@@ -214,21 +195,6 @@ router.post(
 // #######################################################
 // #######################################################
 
-// Profile
-router.get("/profile", authmiddleware, async (req, res) => {
-	try {
-		const userData = req.user;
-
-		const userId = userData.id;
-		const user = await User.findById(userId);
-
-		res.status(200).json({ message: user.email });
-	} catch (error) {
-		console.error("GET /profile error:", error);
-		res.status(500).json({ error: "Internal Server Error" });
-	}
-});
-
 // Home
 router.get("/home", authmiddleware, async (req, res) => {
 	try {
@@ -238,9 +204,7 @@ router.get("/home", authmiddleware, async (req, res) => {
 		});
 
 		if (!user) {
-			return res
-				.status(404)
-				.json({ success: false, message: "User not found" });
+			return res.status(404).json();
 		}
 
 		const userData = {
@@ -268,15 +232,11 @@ router.get("/home", authmiddleware, async (req, res) => {
 		};
 
 		res.status(200).json({
-			success: true,
 			message: userData,
 		});
 	} catch (error) {
 		console.error("GET /home error:", error);
-		res.status(500).json({
-			success: false,
-			error: "Internal Server Error",
-		});
+		res.status(500).json();
 	}
 });
 
