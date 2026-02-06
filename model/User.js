@@ -18,6 +18,8 @@ const userSchema = new mongoose.Schema(
 			immutable: true,
 			match: [/^[a-zA-Z0-9_]+$/, "Invalid username format"],
 			trim: true,
+			minLength: 5,
+			maxLength: 20,
 		},
 		email: {
 			type: String,
@@ -31,7 +33,7 @@ const userSchema = new mongoose.Schema(
 			],
 			trim: true,
 		},
-		password: { type: String, required: true, minlength: 6, select: false },
+		password: { type: String, required: true, minlength: 8, select: false },
 		country: { type: String, default: null, trim: true },
 		city: { type: String, default: null, trim: true },
 		//publicKey: { type: String, required: true }, commented for testing/limited time
@@ -78,26 +80,6 @@ userSchema.pre("save", async function (next) {
 	}
 
 	next();
-});
-
-// Update Password
-userSchema.pre("findOneAndUpdatePassword", async function (next) {
-	const update = this.getUpdate(); // Get update payload
-
-	if (!update.password) {
-		return next();
-	}
-
-	try {
-		const saltRounds = parseInt(config.SALT_ROUNDS);
-		update.password = await bcrypt.hash(update.password, saltRounds);
-
-		this.setUpdate(update);
-
-		next();
-	} catch (err) {
-		next(err);
-	}
 });
 
 // Method to compare a given password with the stored hashed password

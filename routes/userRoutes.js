@@ -66,10 +66,6 @@ router.post(
 		try {
 			const { identifier, password } = req.body;
 
-			if (!identifier || !password) {
-				return res.status(400).json({ success: false });
-			}
-
 			const user = await User.findOne({
 				$or: [
 					{ email: identifier.toLowerCase() },
@@ -128,7 +124,7 @@ router.post("/auth/forgot-password", async (req, res) => {
 		}
 
 		// Generate random token
-		const rawToken = crypto.randomBytes(3).toString("hex");
+		const rawToken = crypto.randomInt(100000, 1000000).toString();
 		const tokenHash = crypto
 			.createHash("sha256")
 			.update(rawToken)
@@ -152,7 +148,7 @@ router.post("/auth/forgot-password", async (req, res) => {
 		await transporter.sendMail({
 			to: email,
 			subject: "Reset Password",
-			text: `Your reset code is ${resetToken}`,
+			text: `Your reset code is ${rawToken}`,
 		});
 
 		return res.status(200).json({ success: true });
@@ -170,36 +166,39 @@ router.post(
 	async (req, res) => {
 		try {
 			const { token, password } = req.body;
-			if (!token || !password) {
-				return res
-					.status(400)
-					.json({ success: false, message: "Enter missing fields" });
-			}
 
 			const tokenHash = crypto
 				.createHash("sha256")
 				.update(token)
 				.digest("hex");
 
-			const reset = await ResetToken.findOne({
+			const resetRecord = await ResetToken.findOneAndDelete({
 				token: tokenHash,
 				expiresAt: { $gt: new Date() },
-			}).populate("userId");
+			});
 
-			if (!reset) return res.status(400).json({ success: false });
+			if (!resetRecord) {
+				return res.status(400).json({
+					success: false,
+					message: "Invalid or expired reset code.",
+				});
+			}
 
-			const user = reset.userId.password;
+			const user = await User.findById(resetRecord.userId);
+			if (!user) {
+				return res.status(404).json({
+					success: false,
+					message: "User no longer exists.",
+				});
+			}
+
 			user.password = password;
+			await user.save(); // Triggers your hashing middleware automatically
 
-			await User.findOneAndUpdatePassword(
-				{ _id: user._id },
-				{ password: user.password },
-				{ runValidators: false }
-			);
-
-			await ResetToken.deleteOne({ token });
-
-			return res.status(200).json({ success: true });
+			return res.status(200).json({
+				success: true,
+				message: "Password updated successfully.",
+			});
 		} catch (err) {
 			console.error("Reset Password error:", err);
 			return res
