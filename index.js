@@ -49,3 +49,6 @@ const PORT = config.PORT;
 server.listen(PORT, "0.0.0.0", () =>
 	console.log(`Server is listening on PORT ${PORT}`)
 );
+
+// Export the server for automated testing purposes
+module.exports = server;

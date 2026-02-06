@@ -36,21 +36,15 @@ router.post("/auth/signup", signupValidator, validate, async (req, res) => {
 
 		const newUser = new User(data);
 		const response = await newUser.save();
-		res.status(201).json({ message: "Signup successful" });
+		res.status(201).json();
 	} catch (error) {
+		console.error("Signup error:", error);
 		if (error.name === "ValidationError") {
-			res.status(400).json({
-				error: "Validation Error",
-				details: error.message,
-			});
+			res.status(400).json();
 		} else if (error.code === 11000) {
-			res.status(409).json({
-				text1: "Signup Failed",
-				text2: "username or email already exists",
-				success: false,
-			});
+			res.status(409).json();
 		} else {
-			res.status(500).json({ error: "Internal Server Error" });
+			res.status(500).json();
 		}
 	}
 });
@@ -65,10 +59,6 @@ router.post(
 		try {
 			const { identifier, password } = req.body;
 
-			if (!identifier || !password) {
-				return res.status(400).json({ success: false });
-			}
-
 			const user = await User.findOne({
 				$or: [
 					{ email: identifier.toLowerCase() },
@@ -77,12 +67,12 @@ router.post(
 			}).select("+password");
 
 			if (!user) {
-				return res.json({ success: false });
+				return res.status(400).json();
 			}
 
 			const isPasswordMatched = await user.comparePassword(password);
 			if (!isPasswordMatched) {
-				return res.json({ success: false });
+				return res.status(400).json();
 			}
 
 			const payload = {
@@ -93,12 +83,11 @@ router.post(
 			await User.findByIdAndUpdate(user._id, { token });
 
 			res.status(200).json({
-				success: true,
 				token,
 			});
 		} catch (error) {
 			console.error("Login error:", error);
-			res.status(500).json({ success: false });
+			res.status(500).json();
 		}
 	}
 );
@@ -109,9 +98,10 @@ router.post("/auth/logout", authmiddleware, async (req, res) => {
 		const userId = req.user.id;
 		await User.findByIdAndUpdate(userId, { token: null });
 
-		res.status(200).json({ success: true });
+		res.status(200).json();
 	} catch (error) {
-		res.status(500).json({ error: "Internal Server Error" });
+		console.error("Logout error:", error);
+		res.status(500).json();
 	}
 });
 
@@ -122,11 +112,11 @@ router.post("/auth/forgot-password", async (req, res) => {
 	try {
 		const user = await User.findOne({ email });
 		if (!user) {
-			return res.status(404).json({ success: false });
+			return res.status(404).json();
 		}
 
 		// Generate random token
-		const rawToken = crypto.randomBytes(3).toString("hex");
+		const rawToken = crypto.randomInt(100000, 1000000).toString();
 		const tokenHash = crypto
 			.createHash("sha256")
 			.update(rawToken)
@@ -150,12 +140,13 @@ router.post("/auth/forgot-password", async (req, res) => {
 		await transporter.sendMail({
 			to: email,
 			subject: "Reset Password",
-			text: `Your reset code is ${resetToken}`,
+			text: `Your reset code is ${rawToken}`,
 		});
 
-		return res.status(200).json({ success: true });
+		return res.status(200).json();
 	} catch (error) {
-		res.status(500).json({ success: false, message: "Server error" });
+		console.error("Forgot Password error:", error);
+		res.status(500).json();
 	}
 });
 
@@ -167,40 +158,33 @@ router.post(
 	async (req, res) => {
 		try {
 			const { token, password } = req.body;
-			if (!token || !password) {
-				return res
-					.status(400)
-					.json({ success: false, message: "Enter missing fields" });
-			}
 
 			const tokenHash = crypto
 				.createHash("sha256")
 				.update(token)
 				.digest("hex");
 
-			const reset = await ResetToken.findOne({
+			const resetRecord = await ResetToken.findOneAndDelete({
 				token: tokenHash,
 				expiresAt: { $gt: new Date() },
-			}).populate("userId");
+			});
 
-			if (!reset) return res.status(400).json({ success: false });
+			if (!resetRecord) {
+				return res.status(400).json();
+			}
 
-			const user = reset.userId.password;
+			const user = await User.findById(resetRecord.userId);
+			if (!user) {
+				return res.status(404).json();
+			}
+
 			user.password = password;
+			await user.save(); // Triggers your hashing middleware automatically
 
-			await User.findOneAndUpdatePassword(
-				{ _id: user._id },
-				{ password: user.password },
-				{ runValidators: false }
-			);
-
-			await ResetToken.deleteOne({ token });
-
-			return res.status(200).json({ success: true });
+			return res.status(200).json();
 		} catch (err) {
-			return res
-				.status(500)
-				.json({ success: false, message: "Server error" });
+			console.error("Reset Password error:", err);
+			return res.status(500).json();
 		}
 	}
 );
@@ -211,20 +195,6 @@ router.post(
 // #######################################################
 // #######################################################
 
-// Profile
-router.get("/profile", authmiddleware, async (req, res) => {
-	try {
-		const userData = req.user;
-
-		const userId = userData.id;
-		const user = await User.findById(userId);
-
-		res.status(200).json({ message: user.email });
-	} catch (error) {
-		res.status(500).json({ error: "Internal Server Error" });
-	}
-});
-
 // Home
 router.get("/home", authmiddleware, async (req, res) => {
 	try {
@@ -234,9 +204,7 @@ router.get("/home", authmiddleware, async (req, res) => {
 		});
 
 		if (!user) {
-			return res
-				.status(404)
-				.json({ success: false, message: "User not found" });
+			return res.status(404).json();
 		}
 
 		const userData = {
@@ -264,15 +232,11 @@ router.get("/home", authmiddleware, async (req, res) => {
 		};
 
 		res.status(200).json({
-			success: true,
 			message: userData,
 		});
 	} catch (error) {
 		console.error("GET /home error:", error);
-		res.status(500).json({
-			success: false,
-			error: "Internal Server Error",
-		});
+		res.status(500).json();
 	}
 });
 

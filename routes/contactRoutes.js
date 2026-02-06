@@ -12,10 +12,7 @@ router.post("/add", authmiddleware, async (req, res) => {
 		const myUserId = req.user.id;
 
 		if (!identifier) {
-			return res.status(400).json({
-				success: false,
-				message: "Identifier required",
-			});
+			return res.status(400).json();
 		}
 
 		const otherUser = await User.findOne({
@@ -23,17 +20,11 @@ router.post("/add", authmiddleware, async (req, res) => {
 		});
 
 		if (!otherUser) {
-			return res.status(404).json({
-				success: false,
-				message: "User not found",
-			});
+			return res.status(404).json();
 		}
 
 		if (String(otherUser._id) === String(myUserId)) {
-			return res.status(400).json({
-				success: false,
-				message: "You cannot add yourself",
-			});
+			return res.status(400).json();
 		}
 
 		const me = await User.findById(myUserId);
@@ -43,28 +34,23 @@ router.post("/add", authmiddleware, async (req, res) => {
 		);
 
 		if (alreadyExists) {
-			return res.status(409).json({
-				success: false,
-				message: "Contact already added",
-			});
+			return res.status(409).json();
 		}
 
 		const fallbackAlias = otherUser.email.split("@")[0];
 		const finalAlias = otherUser.username || fallbackAlias;
-		const updatedUser = await User.findByIdAndUpdate(myUserId, {
+		await User.findByIdAndUpdate(myUserId, {
 			$push: {
 				contact: { user: otherUser._id, alias: finalAlias },
 			},
 		});
 
 		return res.status(201).json({
-			success: true,
-			message: "Contact added",
 			contact: { user: otherUser._id, alias: finalAlias },
 		});
 	} catch (err) {
 		console.error("Add contact error:", err);
-		res.status(500).json({ success: false });
+		res.status(500).json();
 	}
 });
 
@@ -75,17 +61,11 @@ router.put("/update-alias", authmiddleware, async (req, res) => {
 		const myUserId = req.user.id;
 
 		if (!alias) {
-			return res.status(400).json({
-				success: false,
-				message: "Alias required",
-			});
+			return res.status(400).json();
 		}
 
 		if (!req.body.user) {
-			return res.status(400).json({
-				success: false,
-				message: "Contact user id required",
-			});
+			return res.status(400).json();
 		}
 
 		const me = await User.findById(myUserId);
@@ -94,12 +74,9 @@ router.put("/update-alias", authmiddleware, async (req, res) => {
 			(c) => String(c.user) === String(req.body.user)
 		);
 		if (!contactExists) {
-			return res.status(404).json({
-				success: false,
-				message: "Contact not found",
-			});
+			return res.status(404).json();
 		}
-		const updatedUser = await User.findByIdAndUpdate(
+		await User.findByIdAndUpdate(
 			myUserId,
 			{
 				$set: {
@@ -110,13 +87,10 @@ router.put("/update-alias", authmiddleware, async (req, res) => {
 				arrayFilters: [{ "elem.user": req.body.user }],
 			}
 		);
-		return res.status(200).json({
-			success: true,
-			message: "Contact alias updated",
-		});
+		return res.status(200).json();
 	} catch (err) {
 		console.error("Update contact alias error:", err);
-		res.status(500).json({ success: false });
+		res.status(500).json();
 	}
 });
 
@@ -126,34 +100,25 @@ router.delete("/delete", authmiddleware, async (req, res) => {
 		const { user } = req.body; // ID of the contact to delete
 		const myUserId = req.user.id;
 		if (!user) {
-			return res.status(400).json({
-				success: false,
-				message: "Contact user ID required",
-			});
+			return res.status(400).json();
 		}
 		const me = await User.findById(myUserId);
 		const contactExists = me.contact.some(
 			(c) => String(c.user) === String(user)
 		);
 		if (!contactExists) {
-			return res.status(404).json({
-				success: false,
-				message: "Contact not found",
-			});
+			return res.status(404).json();
 		}
 
-		const updatedUser = await User.findByIdAndUpdate(myUserId, {
+		await User.findByIdAndUpdate(myUserId, {
 			$pull: {
 				contact: { user: user },
 			},
 		});
-		return res.status(200).json({
-			success: true,
-			message: "Contact deleted",
-		});
+		return res.status(200).json();
 	} catch (err) {
 		console.error("Delete contact error:", err);
-		res.status(500).json({ success: false });
+		res.status(500).json();
 	}
 });
 

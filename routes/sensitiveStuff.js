@@ -15,7 +15,7 @@ router.get("/ice-servers", authmiddleware, async (req, res) => {
 		res.status(200).json(ICE_SERVERS);
 	} catch (err) {
 		console.error("ICE servers error:", err);
-		res.status(500).json({ success: false });
+		res.status(500).json();
 	}
 });
 
