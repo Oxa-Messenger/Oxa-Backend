@@ -6,11 +6,13 @@ const config = require("../config/config");
 // Endpoints##################################
 
 // return ice servers
+let ICE_SERVERS = null; // cache the ICE servers to avoid fetching them on every request
 router.get("/ice-servers", authmiddleware, async (req, res) => {
 	try {
-		const response = await fetch(config.ICE_SERVERS_API_KEY);
-
-		const ICE_SERVERS = await response.json();
+		if (!ICE_SERVERS) {
+			const response = await fetch(config.ICE_SERVERS_API_KEY);
+			ICE_SERVERS = await response.json();
+		}
 
 		res.status(200).json(ICE_SERVERS);
 	} catch (err) {
