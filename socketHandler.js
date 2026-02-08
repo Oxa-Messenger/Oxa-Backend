@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require("uuid");
+const User = require("./model/User");
 
 module.exports = (io) => {
 	// userId -> socketId
@@ -23,7 +24,7 @@ module.exports = (io) => {
 		/* --------------------
        Registration / single-session enforcement
        -------------------- */
-		socket.on("register", ({ userId }) => {
+		socket.on("register", async ({ userId }) => {
 			console.log("register payload: ", userId);
 			if (!userId) {
 				console.warn(
@@ -52,14 +53,34 @@ module.exports = (io) => {
 				}
 			}
 
-			users.set(userId, socket.id);
-			socketToUser.set(socket.id, userId);
-			socket.data.userId = userId;
+			const currentUserId = userId.toString();
+			users.set(currentUserId, socket.id);
+			socketToUser.set(socket.id, currentUserId);
+			socket.data.userId = currentUserId;
 
-			socket.broadcast.emit("user_online", { userId });
+			try {
+				const user = await User.findById(currentUserId).select(
+					"contact"
+				);
+				const myContacts = user?.contact || [];
 
-			const onlineIds = Array.from(users.keys()); // needs updates. Only those who are in his contact should be sent
-			socket.emit("users_list", { users: onlineIds });
+				const myOnlineContacts = [];
+
+				myContacts.forEach((contactObj) => {
+					const cid = contactObj.user.toString();
+					if (users.has(cid)) {
+						myOnlineContacts.push(cid);
+						io.to(users.get(cid)).emit("user_online", {
+							userId: currentUserId,
+						});
+					}
+				});
+
+				socket.emit("users_list", { users: myOnlineContacts });
+			} catch (err) {
+				console.error("Error fetching contacts in register:", err);
+				socket.emit("users_list", { users: [] });
+			}
 
 			socket.emit("registered", { ok: true });
 			console.log(`registered user ${userId} -> ${socket.id}`);
@@ -190,14 +211,36 @@ module.exports = (io) => {
 		);
 		socket.on("webrtc-ice", (data) => forwardSignal("webrtc-ice", data));
 
-		socket.on("disconnect", () => {
+		socket.on("disconnect", async () => {
 			const me = socketToUser.get(socket.id);
 			if (!me) return;
 
 			// Only delete from 'users' if THIS socket is the current active one for that user
 			if (users.get(me) === socket.id) {
 				users.delete(me);
-				socket.broadcast.emit("user_offline", { userId: me });
+				try {
+					const user = await User.findById(me).select("contact");
+					const myContacts = user?.contact || [];
+
+					myContacts.forEach((contactObj) => {
+						const cid = contactObj.user.toString();
+
+						if (users.has(cid)) {
+							const targetSocketId = users.get(cid);
+							io.to(targetSocketId).emit("user_offline", {
+								userId: me,
+							});
+						}
+					});
+					console.log(
+						`User ${me} went offline. Notified online contacts.`
+					);
+				} catch (err) {
+					console.error(
+						"Error notifying contacts on disconnect:",
+						err
+					);
+				}
 			}
 			socketToUser.delete(socket.id);
 
