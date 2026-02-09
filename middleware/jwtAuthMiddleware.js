@@ -5,7 +5,7 @@ const config = require("../config/config");
 // Middleware to protect routes
 async function authmiddleware(req, res, next) {
 	const token = req.headers.authorization?.split(" ")[1];
-	if (!token) return res.status(401).json({ error: "Unauthorized" });
+	if (!token) return res.status(401).json();
 
 	try {
 		const decoded = jwt.verify(token, config.JWT_SECRET);
@@ -13,16 +13,13 @@ async function authmiddleware(req, res, next) {
 		const user = await User.findOne({ _id: decoded.id });
 
 		if (user.token !== token) {
-			return res.status(200).json({
-				success: true,
-				message: "Unauthorised",
-			});
+			return res.status(401).json();
 		}
 
 		req.user = user;
 		next();
 	} catch (error) {
-		return res.status(403).json({ error: "Forbidden" });
+		return res.status(500).json();
 	}
 }
 
