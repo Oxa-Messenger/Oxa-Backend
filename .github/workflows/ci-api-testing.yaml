@@ -1,4 +1,4 @@
-name: Oxa Backend CI
+name: Oxa Backend CI - API Testing
 
 on:
   pull_request:
@@ -40,6 +40,9 @@ jobs:
           # Connects to the service container defined above
           MONGO_URI: "mongodb://localhost:27017/oxa_test"
 
+          SALT_ROUNDS: 10
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
           # Mock secrets required for the server to start/function
           JWT_SECRET: "secret"
 
