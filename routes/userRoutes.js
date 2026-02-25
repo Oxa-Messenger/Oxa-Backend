@@ -1,6 +1,4 @@
 const express = require("express");
-const crypto = require("crypto");
-const nodemailer = require("nodemailer");
 const router = express.Router();
 
 const User = require("./../model/User");
@@ -11,13 +9,12 @@ const {
 } = require("./../middleware/jwtAuthMiddleware");
 const contactRoutes = require("./contactRoutes");
 const sensitiveStuff = require("./sensitiveStuff");
+const { resetPasswordRoutes } = require("./resetPasswordRoutes");
 const {
 	signupValidator,
 	loginValidator,
-	resetPasswordValidator,
 } = require("../validators/authValidator");
 const { validate } = require("../middleware/validationMiddleware");
-const config = require("../config/config");
 const { LoginL } = require("../validators/loginLimiter");
 
 // Endpoints##################################
@@ -28,6 +25,9 @@ router.use("/contacts", contactRoutes);
 // Import sensitive stuff routes
 router.use("/sensitive-stuff", sensitiveStuff);
 
+// Import forgot-password and reset-password routes
+router.use("/auth", resetPasswordRoutes);
+
 // Signup
 router.post("/auth/signup", signupValidator, validate, async (req, res) => {
 	try {
@@ -35,7 +35,7 @@ router.post("/auth/signup", signupValidator, validate, async (req, res) => {
 		data.requestedMethod = req.method;
 
 		const newUser = new User(data);
-		const response = await newUser.save();
+		await newUser.save();
 		res.status(201).json();
 	} catch (error) {
 		console.error("Signup error:", error);
@@ -104,90 +104,6 @@ router.post("/auth/logout", authmiddleware, async (req, res) => {
 		res.status(500).json();
 	}
 });
-
-// Forgot Password
-router.post("/auth/forgot-password", async (req, res) => {
-	const { email } = req.body;
-
-	try {
-		const user = await User.findOne({ email });
-		if (!user) {
-			return res.status(404).json();
-		}
-
-		// Generate random token
-		const rawToken = crypto.randomInt(100000, 1000000).toString();
-		const tokenHash = crypto
-			.createHash("sha256")
-			.update(rawToken)
-			.digest("hex");
-
-		// Save token in DB with expiration (10 mins)
-		await ResetToken.create({
-			userId: user._id,
-			token: tokenHash,
-			expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-		});
-
-		const transporter = nodemailer.createTransport({
-			service: "gmail",
-			auth: {
-				user: config.EMAIL_FROM,
-				pass: config.EMAIL_PASS,
-			},
-		});
-
-		await transporter.sendMail({
-			to: email,
-			subject: "Reset Password",
-			text: `Your reset code is ${rawToken}`,
-		});
-
-		return res.status(200).json();
-	} catch (error) {
-		console.error("Forgot Password error:", error);
-		res.status(500).json();
-	}
-});
-
-// Forgot Password Reset Code Check
-router.post(
-	"/auth/reset-password",
-	resetPasswordValidator,
-	validate,
-	async (req, res) => {
-		try {
-			const { token, password } = req.body;
-
-			const tokenHash = crypto
-				.createHash("sha256")
-				.update(token)
-				.digest("hex");
-
-			const resetRecord = await ResetToken.findOneAndDelete({
-				token: tokenHash,
-				expiresAt: { $gt: new Date() },
-			});
-
-			if (!resetRecord) {
-				return res.status(400).json();
-			}
-
-			const user = await User.findById(resetRecord.userId);
-			if (!user) {
-				return res.status(404).json();
-			}
-
-			user.password = password;
-			await user.save(); // Triggers your hashing middleware automatically
-
-			return res.status(200).json();
-		} catch (err) {
-			console.error("Reset Password error:", err);
-			return res.status(500).json();
-		}
-	}
-);
 
 // #######################################################
 // #######################################################
