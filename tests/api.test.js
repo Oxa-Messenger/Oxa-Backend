@@ -13,6 +13,7 @@ global.fetch = jest.fn(() =>
 const request = require("supertest");
 const mongoose = require("mongoose");
 const app = require("../index"); // Importing the server instance
+const { tokenManager } = require("../routes/resetPasswordRoutes");
 
 // Global configuration for the test environment
 jest.setTimeout(30000);
@@ -45,6 +46,8 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+	tokenManager.stopGC();
+
 	// Clean up database and connection after all tests finish
 	if (mongoose.connection.db) {
 		await mongoose.connection.db.dropDatabase();
