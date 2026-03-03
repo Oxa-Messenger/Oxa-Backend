@@ -8,6 +8,7 @@ const {
 } = require("../validators/authValidator");
 const { validate } = require("../middleware/validationMiddleware");
 const config = require("../config/config");
+const { forgotPasswordLimiter } = require("../validators/forgotPasswordLimiter")
 const { resetPasswordLimiter } = require("../validators/resetPasswordLimiter");
 const User = require("../model/User");
 
@@ -98,7 +99,7 @@ class SecureTokenManager {
 const tokenManager = new SecureTokenManager();
 
 // Forgot Password - Issuing the Token
-router.post("/forgot-password", resetPasswordLimiter, forgotPasswordValidator, async (req, res) => {
+router.post("/forgot-password", forgotPasswordLimiter, forgotPasswordValidator, async (req, res) => {
 	const { email } = req.body;
 	try {
 		const user = await User.findOne({ email });
