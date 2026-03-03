@@ -15,6 +15,15 @@ const mongoose = require("mongoose");
 const app = require("../index"); // Importing the server instance
 const { tokenManager } = require("../routes/resetPasswordRoutes");
 
+// Mock nodemailer
+const nodemailer = require("nodemailer");
+const mockSendMail = jest.fn().mockResolvedValue(true);
+jest.mock("nodemailer", () => ({
+	createTransport: jest.fn(() => ({
+		sendMail: mockSendMail,
+	})),
+}));
+
 // Global configuration for the test environment
 jest.setTimeout(30000);
 
@@ -23,13 +32,13 @@ const TIMESTAMP = Date.now();
 
 const TEST_USER = {
 	username: `user_${TIMESTAMP.toString().slice(-8)}`,
-	email: `test_${TIMESTAMP}@example.com`,
+	email: `tes.t_${TIMESTAMP}@example.com`,
 	password: "Password123!",
 };
 
 const CONTACT_USER = {
 	username: `cont_${TIMESTAMP.toString().slice(-8)}`,
-	email: `contact_${TIMESTAMP}@example.com`,
+	email: `contac.t_${TIMESTAMP}@example.com`,
 	password: "Password123!",
 };
 
@@ -52,7 +61,7 @@ afterAll(async () => {
 	if (mongoose.connection.db) {
 		await mongoose.connection.db.dropDatabase();
 	}
-	await mongoose.connection.close();
+	await mongoose.disconnect();
 });
 
 describe("Oxa Backend Comprehensive Test Suite", () => {
@@ -72,7 +81,7 @@ describe("Oxa Backend Comprehensive Test Suite", () => {
 				.post("/user/auth/signup")
 				.send({
 					...TEST_USER,
-					email: "bad-email-format",
+					email: "bad-ema.il-format",
 				});
 			expect(res.statusCode).toBe(400);
 		});
@@ -333,7 +342,46 @@ describe("Oxa Backend Comprehensive Test Suite", () => {
 			const res = await request(app)
 				.post("/user/auth/forgot-password")
 				.send({ email: TEST_USER.email });
-			expect(res.statusCode).toBe(200); // Record created and email "sent"
+			expect(res.statusCode).toBe(200);
+			expect(mockSendMail).toHaveBeenCalled();
+		});
+
+		it("33. POST /reset-password - Should fail to reset the password due to invalid Pin", async () => {
+			const resetPin = "00000";
+
+			const res = await request(app)
+				.post("/user/auth/reset-password")
+				.send({
+					resetPin: resetPin,
+					password: "NewPassword456!"
+				});
+
+			expect(res.statusCode).toBe(400);
+			expect(res.body.error).toBe("Invalid or expired code");
+		});
+
+		it("34. POST /reset-password - Should successfully reset the password", async () => {
+			expect(mockSendMail).toHaveBeenCalled();
+
+			// Access the HTML from the first call
+			const emailArgs = mockSendMail.mock.calls[0][0];
+
+			const pinMatch = emailArgs.html.match(/>\s*(\d{5})\s*</);
+
+			if (!pinMatch) {
+				throw new Error("Could not find PIN in the sent email HTML");
+			}
+
+			const resetPin = pinMatch[1];
+
+			const res = await request(app)
+				.post("/user/auth/reset-password")
+				.send({
+					resetPin: resetPin,
+					password: "NewPassword456!"
+				});
+
+			expect(res.statusCode).toBe(200);
 		});
 	});
 });
