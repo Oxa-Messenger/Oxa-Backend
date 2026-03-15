@@ -22,8 +22,8 @@ module.exports = (io) => {
 		console.log("A user connected:", socket.id);
 
 		/* --------------------
-       Registration / single-session enforcement
-       -------------------- */
+	   Registration / single-session enforcement
+	   -------------------- */
 		socket.on("register", async ({ userId }) => {
 			console.log("register payload: ", userId);
 			if (!userId) {
@@ -48,7 +48,7 @@ module.exports = (io) => {
 						reason: "Logged in from another device",
 					});
 
-					// 3. Forcefully disconnect the old socket
+					// Forcefully disconnect the old socket
 					oldSocket.disconnect(true);
 				}
 			}
@@ -59,26 +59,41 @@ module.exports = (io) => {
 			socket.data.userId = currentUserId;
 
 			try {
-				const user = await User.findById(currentUserId).select(
-					"contact"
-				);
+				const user = await User.findById(currentUserId).select("contact");
 				const myContacts = user?.contact || [];
 
-				const myOnlineContacts = [];
+				const onlineCids = myContacts
+					.map(c => c.user.toString())
+					.filter(cid => users.has(cid));
 
-				myContacts.forEach((contactObj) => {
-					const cid = contactObj.user.toString();
-					if (users.has(cid)) {
-						myOnlineContacts.push(cid);
-						io.to(users.get(cid)).emit("user_online", {
-							userId: currentUserId,
-						});
-					}
-				});
+				let myMutualOnlineContacts = [];
 
-				socket.emit("users_list", { users: myOnlineContacts });
+				if (onlineCids.length > 0) {
+					/* THE MUTUAL CHECK:
+					   Find users who are in your 'onlineCids' list AND have YOU in their contacts.
+					   We use $in to check multiple IDs at once (efficient).
+					*/
+					const mutualUsers = await User.find({
+						_id: { $in: onlineCids },
+						"contact.user": currentUserId
+					}).select("_id");
+
+					myMutualOnlineContacts = mutualUsers.map(u => u._id.toString());
+
+					myMutualOnlineContacts.forEach((cid) => {
+						const recipientSocketId = users.get(cid);
+						if (recipientSocketId) {
+							io.to(recipientSocketId).emit("user_online", {
+								userId: currentUserId,
+							});
+						}
+					});
+				}
+
+				socket.emit("users_list", { users: myMutualOnlineContacts });
+
 			} catch (err) {
-				console.error("Error fetching contacts in register:", err);
+				console.error("Error in mutual contact registration:", err);
 				socket.emit("users_list", { users: [] });
 			}
 
@@ -87,10 +102,10 @@ module.exports = (io) => {
 		});
 
 		/* --------------------
-       Get or create canonical 1:1 room
-       Client calls: socket.emit('get_or_create_room', { withUser: otherUserId }, cb)
-       cb receives { roomId }
-       -------------------- */
+	   Get or create canonical 1:1 room
+	   Client calls: socket.emit('get_or_create_room', { withUser: otherUserId }, cb)
+	   cb receives { roomId }
+	   -------------------- */
 		socket.on("get_or_create_room", ({ withUser }, cb) => {
 			const me = socket.data?.userId;
 			if (!me || !withUser) {
@@ -118,8 +133,8 @@ module.exports = (io) => {
 		});
 
 		/* --------------------
-       Room join/leave (groups + 1:1 after get_or_create_room)
-       -------------------- */
+	   Room join/leave (groups + 1:1 after get_or_create_room)
+	   -------------------- */
 		socket.on("room:join", ({ roomId }) => {
 			const me = socket.data?.userId;
 			if (!me || !roomId) return;
@@ -175,8 +190,8 @@ module.exports = (io) => {
 		});
 
 		/* --------------------
-       notify_waiting: simple ring/push event to a specific user
-       -------------------- */
+	   notify_waiting: simple ring/push event to a specific user
+	   -------------------- */
 		socket.on("notify_waiting", ({ to }) => {
 			const from = socket.data?.userId;
 			if (!from || !to) return;
