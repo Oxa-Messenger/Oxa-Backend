@@ -10,19 +10,18 @@ global.fetch = jest.fn(() =>
 	})
 );
 
-const request = require("supertest");
-const mongoose = require("mongoose");
-const app = require("../index"); // Importing the server instance
-const { tokenManager } = require("../routes/resetPasswordRoutes");
-
 // Mock nodemailer
-const nodemailer = require("nodemailer");
 const mockSendMail = jest.fn().mockResolvedValue(true);
 jest.mock("nodemailer", () => ({
 	createTransport: jest.fn(() => ({
 		sendMail: mockSendMail,
 	})),
 }));
+
+const nodemailer = require("nodemailer");
+const request = require("supertest");
+const mongoose = require("mongoose");
+const app = require("../index"); // Importing the server instance
 
 // Global configuration for the test environment
 jest.setTimeout(30000);
@@ -55,8 +54,6 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-	tokenManager.stopGC();
-
 	// Clean up database and connection after all tests finish
 	if (mongoose.connection.db) {
 		await mongoose.connection.db.dropDatabase();
@@ -130,7 +127,7 @@ describe("Oxa Backend Comprehensive Test Suite", () => {
 				identifier: "ghost@example.com",
 				password: "Password123!",
 			});
-			expect(res.statusCode).toBe(400); // Standard behavior for missing users
+			expect(res.statusCode).toBe(401); // Standard behavior for missing users
 		});
 
 		it("9. POST /login - Should fail with incorrect password", async () => {
@@ -138,7 +135,7 @@ describe("Oxa Backend Comprehensive Test Suite", () => {
 				identifier: TEST_USER.email,
 				password: "WrongPassword!",
 			});
-			expect(res.statusCode).toBe(400);
+			expect(res.statusCode).toBe(401);
 		});
 
 		it("10. POST /login - Should login successfully and return JWT", async () => {
@@ -306,7 +303,7 @@ describe("Oxa Backend Comprehensive Test Suite", () => {
 				.delete("/user/contacts/delete")
 				.set("Authorization", `Bearer ${authToken}`)
 				.send({ user: contactUserId });
-			expect(res.statusCode).toBe(200);
+			expect(res.statusCode).toBe(204);
 		});
 
 		it("28. DELETE /contacts/delete - Should fail to delete same contact twice", async () => {
@@ -321,7 +318,7 @@ describe("Oxa Backend Comprehensive Test Suite", () => {
 			const res = await request(app)
 				.post("/user/auth/logout")
 				.set("Authorization", `Bearer ${authToken}`);
-			expect(res.statusCode).toBe(200); // Clears token in DB
+			expect(res.statusCode).toBe(204); // Clears token in DB
 		});
 
 		it("30. GET /home - Should fail after logout (Token invalidated)", async () => {
@@ -331,11 +328,11 @@ describe("Oxa Backend Comprehensive Test Suite", () => {
 			expect(res.statusCode).toBe(401); // Middleware detects null token in DB
 		});
 
-		it("31. POST /forgot-password - Should fail if email not found", async () => {
+		it("31. POST /forgot-password - Should successfully initiate reset flow even if email not found", async () => {
 			const res = await request(app)
 				.post("/user/auth/forgot-password")
 				.send({ email: "unregistered@example.com" });
-			expect(res.statusCode).toBe(404);
+			expect(res.statusCode).toBe(200);
 		});
 
 		it("32. POST /forgot-password - Should successfully initiate reset flow", async () => {
@@ -352,6 +349,7 @@ describe("Oxa Backend Comprehensive Test Suite", () => {
 			const res = await request(app)
 				.post("/user/auth/reset-password")
 				.send({
+					email: TEST_USER.email,
 					resetPin: resetPin,
 					password: "NewPassword456!"
 				});
@@ -377,6 +375,7 @@ describe("Oxa Backend Comprehensive Test Suite", () => {
 			const res = await request(app)
 				.post("/user/auth/reset-password")
 				.send({
+					email: TEST_USER.email,
 					resetPin: resetPin,
 					password: "NewPassword456!"
 				});

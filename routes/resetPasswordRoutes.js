@@ -1,167 +1,111 @@
 const express = require("express");
 const nodemailer = require("nodemailer");
+const crypto = require("crypto");
 const router = express.Router();
 
-const {
-	forgotPasswordValidator,
-	resetPasswordValidator,
-} = require("../validators/authValidator");
+const { forgotPasswordValidator, resetPasswordValidator } = require("../validators/authValidator");
 const { validate } = require("../middleware/validationMiddleware");
 const config = require("../config/config");
-const { forgotPasswordLimiter } = require("../validators/forgotPasswordLimiter")
+const { forgotPasswordLimiter } = require("../validators/forgotPasswordLimiter");
 const { resetPasswordLimiter } = require("../validators/resetPasswordLimiter");
 const User = require("../model/User");
 
-// Endpoints##################################
+// ==========================================
+// In-Memory Token Store (Dynamic Hash Map)
+// ==========================================
+const tokenStore = new Map();
+const TOKEN_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
 
-const crypto = require('crypto');
-
-class SecureTokenManager {
-	constructor() {
-		this.PIN_MIN = 10000;
-		this.PIN_MAX = 99999;
-
-		// Initialize Pool with Cryptographic Shuffle
-		this.availablePins = Array.from(
-			{ length: this.PIN_MAX - this.PIN_MIN + 1 },
-			(_, i) => (i + this.PIN_MIN).toString()
-		);
-		this.secureShuffle(this.availablePins);
-
-		this.pinToUser = new Map();
-		this.userToPin = new Map();
-
-		// Garbage Collection (Runs every 10 minute)
-		this.gcInterval = setInterval(() => this.cleanupExpired(), 10 * 60 * 1000);
-
-	}
-	stopGC() {
-		if (this.gcInterval) {
-			clearInterval(this.gcInterval);
-			console.log("Token Garbage Collection stopped.");
+// Passive Garbage Collection to prevent Memory Leaks
+// Runs every 5 minutes to sweep $O(n) over active requests only
+setInterval(() => {
+	const now = Date.now();
+	for (const [email, data] of tokenStore.entries()) {
+		if (data.expiresAt < now) {
+			tokenStore.delete(email);
 		}
 	}
+}, 5 * 60 * 1000).unref(); // .unref() prevents this interval from keeping the Node process alive indefinitely
 
-	// Using crypto.randomInt for Fisher-Yates (not Math.random)
-	secureShuffle(array) {
-		for (let i = array.length - 1; i > 0; i--) {
-			const j = crypto.randomInt(0, i + 1);
-			[array[i], array[j]] = [array[j], array[i]];
-		}
-	}
+const transporter = nodemailer.createTransport({
+	service: "gmail",
+	auth: { user: config.EMAIL_FROM, pass: config.EMAIL_PASS },
+});
 
-	issue(userId) {
-		// Pool Exhaustion Check
-		if (this.availablePins.length === 0) {
-			console.error("CRITICAL: Token Pool Exhausted");
-			return null;
-		}
-
-		// If user already has a pin, we "bury" it at the bottom of the stack 
-		// so they don't get the same one immediately.
-		if (this.userToPin.has(userId)) {
-			const oldPin = this.userToPin.get(userId);
-			this.pinToUser.delete(oldPin);
-			this.availablePins.unshift(oldPin); // Push to front (bottom of stack)
-		}
-
-		const pin = this.availablePins.pop(); // Take from back (top of stack)
-		const expiresAt = Date.now() + 60 * 1000;
-
-		this.pinToUser.set(pin, { userId, expiresAt });
-		this.userToPin.set(userId, pin);
-		return pin;
-	}
-
-	// Systematic Garbage Collection
-	cleanupExpired() {
-		const now = Date.now();
-		for (const [pin, data] of this.pinToUser.entries()) {
-			if (data.expiresAt < now) {
-				this.pinToUser.delete(pin);
-				this.userToPin.delete(data.userId);
-				this.availablePins.push(pin); // Return to pool
-			}
-		}
-	}
-
-	consume(pin) {
-		const data = this.pinToUser.get(pin);
-		if (!data || data.expiresAt < Date.now()) return null;
-
-		this.pinToUser.delete(pin);
-		this.userToPin.delete(data.userId);
-		this.availablePins.push(pin);
-		return data.userId;
-	}
-}
-
-const tokenManager = new SecureTokenManager();
+// ==========================================
+// Endpoints
+// ==========================================
 
 // Forgot Password - Issuing the Token
-router.post("/forgot-password", forgotPasswordLimiter, forgotPasswordValidator, async (req, res) => {
+router.post("/forgot-password", forgotPasswordLimiter, forgotPasswordValidator, validate, async (req, res) => {
 	const { email } = req.body;
 	try {
+		// 1. Verify user exists
 		const user = await User.findOne({ email });
-		if (!user) return res.status(404).json();
-
-		// Get unique pin from the pre-shuffled pool
-		const rawToken = tokenManager.issue(user._id.toString());
-
-		if (!rawToken) {
-			return res.status(503).json();
+		if (!user) {
+			// Return 200 to prevent email enumeration attacks
+			return res.status(200).json({ message: "If an account exists, a reset code has been sent." });
 		}
 
-		const transporter = nodemailer.createTransport({
-			service: "gmail",
-			auth: { user: config.EMAIL_FROM, pass: config.EMAIL_PASS },
+		// 2. Generate Cryptographically Secure 5-Digit PIN
+		const pin = crypto.randomInt(10000, 100000).toString();
+
+		// 3. Store/Overwrite in Hash Map ($O(1) operation)
+		tokenStore.set(email, {
+			pin,
+			expiresAt: Date.now() + TOKEN_EXPIRY_MS
 		});
 
-		// Pretty HTML Email Template
+		// 4. Dispatch Email (Consider offloading to a Job Queue like BullMQ in the future)
 		await transporter.sendMail({
 			to: email,
 			subject: "Reset Your Password",
-			text: `Your reset code is ${rawToken}`,
+			text: `Your reset code is ${pin}`,
 			html: `
             <div style="font-family: sans-serif; max-width: 400px; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
                 <h2 style="color: #333;">Password Reset</h2>
-                <p>Use the code below to reset your password. It expires in 1 minute.</p>
+                <p>Use the code below to reset your password. It expires in 10 minutes.</p>
                 <div style="background: #f4f4f4; padding: 10px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #007bff; border-radius: 5px;">
-                    ${rawToken}
+                    ${pin}
                 </div>
             </div>`
 		});
 
-		return res.status(200).json({ message: "Reset code sent." });
+		return res.status(200).json({ message: "If an account exists, a reset code has been sent." });
 	} catch (error) {
-		console.error(error);
-		res.status(500).json();
+		console.error("Forgot Password Error:", error);
+		res.status(500).json({ error: "Internal server error" });
 	}
 });
 
 // Reset Password - Verifying the Token
 router.post("/reset-password", resetPasswordLimiter, resetPasswordValidator, validate, async (req, res) => {
 	try {
-		const { resetPin, password } = req.body;
+		const { email, resetPin, password } = req.body;
 
-		// Instant O(1) check in memory
-		const userId = tokenManager.consume(resetPin);
+		// 1. $O(1) Lookup in Token Store
+		const record = tokenStore.get(email);
 
-		if (!userId) {
+		// 2. Validate existence, expiration, and PIN match
+		if (!record || record.expiresAt < Date.now() || record.pin !== resetPin) {
 			return res.status(400).json({ error: "Invalid or expired code" });
 		}
 
-		const user = await User.findById(userId);
-		if (!user) return res.status(404).json();
+		// 3. Find User and Update
+		const user = await User.findOne({ email });
+		if (!user) return res.status(404).json({ error: "User not found." });
 
-		user.password = password; // Mongoose will handle hashing
-		await user.save();
+		user.password = password;
+		await user.save(); // MUST trigger Mongoose pre-save hook for bcrypt hashing
 
-		return res.status(200).json({ message: "Password updated" });
+		// 4. Invalidate the token to prevent replay attacks
+		tokenStore.delete(email);
+
+		return res.status(200).json({ message: "Password updated successfully." });
 	} catch (err) {
-		console.error(err);
-		return res.status(500).json();
+		console.error("Reset Password Error:", err);
+		return res.status(500).json({ error: "Internal server error" });
 	}
 });
 
-module.exports = { resetPasswordRoutes: router, tokenManager };
+module.exports = { resetPasswordRoutes: router };
