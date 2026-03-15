@@ -66,12 +66,12 @@ router.post(
 			}).select("+password");
 
 			if (!user) {
-				return res.status(400).json();
+				return res.status(401).json();
 			}
 
 			const isPasswordMatched = await user.comparePassword(password);
 			if (!isPasswordMatched) {
-				return res.status(400).json();
+				return res.status(401).json();
 			}
 
 			const payload = {
@@ -97,7 +97,7 @@ router.post("/auth/logout", authmiddleware, async (req, res) => {
 		const userId = req.user.id;
 		await User.findByIdAndUpdate(userId, { token: null });
 
-		res.status(200).json();
+		res.status(204).send();
 	} catch (error) {
 		console.error("Logout error:", error);
 		res.status(500).json();
@@ -117,10 +117,6 @@ router.get("/home", authmiddleware, async (req, res) => {
 			path: "contact",
 			select: "username email _id",
 		});
-
-		if (!user) {
-			return res.status(404).json();
-		}
 
 		const userData = {
 			userId: user._id,
