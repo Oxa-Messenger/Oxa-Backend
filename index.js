@@ -7,7 +7,6 @@ const { Server } = require("socket.io");
 require("./database");
 const config = require("./config/config");
 const { jwtAuthSocket } = require("./middleware/jwtAuthMiddleware");
-const { tokenManager } = require("./routes/resetPasswordRoutes");
 
 const app = express();
 const server = http.createServer(app);
@@ -58,13 +57,7 @@ process.on('SIGTERM', () => {
 		console.log('Socket.io server closed.');
 	});
 
-	// 2. Stop the Token Manager interval (prevent Jest/Node from hanging)
-	if (tokenManager && tokenManager.stopGC) {
-		tokenManager.stopGC();
-		console.log('Token GC interval cleared.');
-	}
-
-	// 3. Stop accepting new HTTP requests
+	// 2. Stop accepting new HTTP requests
 	// The server will wait for existing requests to finish (up to Render's timeout)
 	server.close(() => {
 		console.log('HTTP server closed. Process exiting.');
