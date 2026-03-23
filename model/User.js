@@ -20,6 +20,7 @@ const userSchema = new mongoose.Schema(
 			trim: true,
 			minLength: 5,
 			maxLength: 20,
+			index: true
 		},
 		email: {
 			type: String,
@@ -32,12 +33,11 @@ const userSchema = new mongoose.Schema(
 				"Please fill a valid email address",
 			],
 			trim: true,
+			index: true
 		},
 		password: { type: String, required: true, minlength: 8, select: false },
 		country: { type: String, default: null, trim: true },
 		city: { type: String, default: null, trim: true },
-		//publicKey: { type: String, required: true }, commented for testing/limited time
-		//playIntegrityHash: { type: String, required: true }, commented for testing/limited time
 		token: { type: String, default: null },
 		joinedCommunities: {
 			type: [mongoose.Schema.Types.ObjectId],
