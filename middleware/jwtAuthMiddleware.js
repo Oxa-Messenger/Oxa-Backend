@@ -12,7 +12,7 @@ async function authmiddleware(req, res, next) {
 
 		const user = await User.findOne({ _id: decoded.id });
 
-		if (user.token !== token) {
+		if (!user || user.token !== token) {
 			return res.status(401).json();
 		}
 
