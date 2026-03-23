@@ -9,8 +9,6 @@ const User = require("./../model/User");
 router.post("/add", authmiddleware, async (req, res) => {
 	try {
 		const { identifier } = req.body; // email or username
-		const myUserId = req.user.id;
-
 		if (!identifier) return res.status(400).json();
 
 		const otherUser = await User.findOne({
@@ -21,24 +19,17 @@ router.post("/add", authmiddleware, async (req, res) => {
 		});
 
 		if (!otherUser) return res.status(404).json();
-		if (String(otherUser._id) === String(myUserId)) return res.status(400).json();
+		if (otherUser._id.equals(req.user._id)) return res.status(400).json();
+
+		// Check if contact already exists in memory
+		const exists = req.user.contact.some(c => c.user.equals(otherUser._id));
+		if (exists) return res.status(409).json({ error: "Contact already exists" });
 
 		const fallbackAlias = otherUser.email.split("@")[0];
 		const finalAlias = otherUser.username || fallbackAlias;
 
-		const result = await User.updateOne(
-			{
-				_id: myUserId,
-				"contact.user": { $ne: otherUser._id } // "Not Equal" - only match if NOT present
-			},
-			{
-				$push: { contact: { user: otherUser._id, alias: finalAlias } }
-			}
-		);
-
-		if (result.matchedCount === 0) {
-			return res.status(409).json({ error: "Contact already exists" });
-		}
+		req.user.contact.push({ user: otherUser._id, alias: finalAlias });
+		await req.user.save();
 
 		return res.status(201).json({
 			contact: { user: otherUser._id, alias: finalAlias },
@@ -54,20 +45,17 @@ router.post("/add", authmiddleware, async (req, res) => {
 router.put("/update-alias", authmiddleware, async (req, res) => {
 	try {
 		const { alias, user } = req.body; // ID of the contact to update
-		const myId = req.user.id;
+		if (!alias || !user) return res.status(400).json();
 
-		if (!alias || !user) {
-			return res.status(400).json({ error: "Alias and User ID are required" });
-		}
+		// Find the contact in the array already loaded in req.user
+		const contact = req.user.contact.find(c => c.user.toString() === user);
 
-		const result = await User.updateOne(
-			{ _id: myId, "contact.user": user },
-			{ $set: { "contact.$.alias": alias } }
-		);
-
-		if (result.matchedCount === 0) {
+		if (!contact) {
 			return res.status(404).json({ error: "Contact not found" });
 		}
+
+		contact.alias = alias;
+		await req.user.save();
 
 		return res.status(200).json({ message: "Alias updated successfully" });
 	} catch (err) {
@@ -79,19 +67,18 @@ router.put("/update-alias", authmiddleware, async (req, res) => {
 // Delete contact
 router.delete("/delete", authmiddleware, async (req, res) => {
 	try {
-		const { user } = req.body; // ID of the contact to delete
-		const myUserId = req.user.id;
-		if (!user) {
-			return res.status(400).json();
-		}
-		const result = await User.updateOne(
-			{ _id: myUserId, "contact.user": user },
-			{ $pull: { contact: { user: user } } }
-		);
+		const { user: contactId } = req.body;
+		if (!contactId) return res.status(400).json();
 
-		if (result.matchedCount === 0) {
+		// Check if the contact exists in the local array
+		const contactExists = req.user.contact.some(c => c.user.toString() === contactId);
+
+		if (!contactExists) {
 			return res.status(404).json({ error: "Contact not found in your list" });
 		}
+
+		req.user.contact.pull({ user: contactId });
+		await req.user.save();
 
 		return res.status(204).send();
 	} catch (err) {
