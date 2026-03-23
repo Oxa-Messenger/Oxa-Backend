@@ -31,7 +31,6 @@ router.use("/auth", resetPasswordRoutes);
 router.post("/auth/signup", signupValidator, validate, async (req, res) => {
 	try {
 		const data = req.body;
-		data.requestedMethod = req.method;
 
 		const newUser = new User(data);
 		await newUser.save();
@@ -94,8 +93,8 @@ router.post(
 // Logout
 router.post("/auth/logout", authmiddleware, async (req, res) => {
 	try {
-		const userId = req.user.id;
-		await User.findByIdAndUpdate(userId, { token: null });
+		req.user.token = null;
+		await req.user.save();
 
 		res.status(204).send();
 	} catch (error) {
@@ -113,30 +112,25 @@ router.post("/auth/logout", authmiddleware, async (req, res) => {
 // Home
 router.get("/home", authmiddleware, async (req, res) => {
 	try {
-		const user = await User.findById(req.user.id).populate({
-			path: "contact",
-			select: "username email _id",
-		});
-
 		const userData = {
-			userId: user._id,
-			name: user.name,
-			username: user.username,
-			email: user.email,
-			country: user.country,
-			city: user.city,
-			profileQRId: user._id,
+			userId: req.user._id,
+			name: req.user.name,
+			username: req.user.username,
+			email: req.user.email,
+			country: req.user.country,
+			city: req.user.city,
+			profileQRId: req.user._id,
 			joinedCommunities:
-				(user.joinedCommunities || []).map((community) =>
+				(req.user.joinedCommunities || []).map((community) =>
 					typeof community === "object" && community._id
 						? community._id
 						: community
 				) || [],
 			joinedGroups:
-				(user.joinedGroups || []).map((group) =>
+				(req.user.joinedGroups || []).map((group) =>
 					typeof group === "object" && group._id ? group._id : group
 				) || [],
-			contacts: (user.contact || []).map((contact) => ({
+			contacts: (req.user.contact || []).map((contact) => ({
 				user: contact.user,
 				alias: contact.alias,
 			})),
