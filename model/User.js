@@ -19,8 +19,7 @@ const userSchema = new mongoose.Schema(
 			match: [/^[a-zA-Z0-9_]+$/, "Invalid username format"],
 			trim: true,
 			minLength: 5,
-			maxLength: 20,
-			index: true
+			maxLength: 20
 		},
 		email: {
 			type: String,
@@ -32,8 +31,7 @@ const userSchema = new mongoose.Schema(
 				/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,})+$/,
 				"Please fill a valid email address",
 			],
-			trim: true,
-			index: true
+			trim: true
 		},
 		password: { type: String, required: true, minlength: 8, select: false },
 		country: { type: String, default: null, trim: true },
