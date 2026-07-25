@@ -9,45 +9,32 @@ const User = require("./../model/User");
 router.post("/add", authmiddleware, async (req, res) => {
 	try {
 		const { identifier } = req.body; // email or username
-		const myUserId = req.user.id;
-
-		if (!identifier) {
-			return res.status(400).json();
-		}
+		if (!identifier) return res.status(400).json();
 
 		const otherUser = await User.findOne({
-			$or: [{ email: identifier }, { username: identifier }],
+			$or: [
+				{ email: identifier.toLowerCase() },
+				{ username: identifier }
+			],
 		});
 
-		if (!otherUser) {
-			return res.status(404).json();
-		}
+		if (!otherUser) return res.status(404).json();
+		if (otherUser._id.equals(req.user._id)) return res.status(400).json();
 
-		if (String(otherUser._id) === String(myUserId)) {
-			return res.status(400).json();
-		}
-
-		const me = await User.findById(myUserId);
-
-		const alreadyExists = me.contact.some(
-			(c) => String(c.user) === String(otherUser._id)
-		);
-
-		if (alreadyExists) {
-			return res.status(409).json();
-		}
+		// Check if contact already exists in memory
+		const exists = req.user.contact.some(c => c.user.equals(otherUser._id));
+		if (exists) return res.status(409).json({ error: "Contact already exists" });
 
 		const fallbackAlias = otherUser.email.split("@")[0];
 		const finalAlias = otherUser.username || fallbackAlias;
-		await User.findByIdAndUpdate(myUserId, {
-			$push: {
-				contact: { user: otherUser._id, alias: finalAlias },
-			},
-		});
+
+		req.user.contact.push({ user: otherUser._id, alias: finalAlias });
+		await req.user.save();
 
 		return res.status(201).json({
 			contact: { user: otherUser._id, alias: finalAlias },
 		});
+
 	} catch (err) {
 		console.error("Add contact error:", err);
 		res.status(500).json();
@@ -57,37 +44,20 @@ router.post("/add", authmiddleware, async (req, res) => {
 // Update contact alias
 router.put("/update-alias", authmiddleware, async (req, res) => {
 	try {
-		const { alias } = req.body; // ID of the contact to update
-		const myUserId = req.user.id;
+		const { alias, user } = req.body; // ID of the contact to update
+		if (!alias || !user) return res.status(400).json();
 
-		if (!alias) {
-			return res.status(400).json();
+		// Find the contact in the array already loaded in req.user
+		const contact = req.user.contact.find(c => c.user.toString() === user);
+
+		if (!contact) {
+			return res.status(404).json({ error: "Contact not found" });
 		}
 
-		if (!req.body.user) {
-			return res.status(400).json();
-		}
+		contact.alias = alias;
+		await req.user.save();
 
-		const me = await User.findById(myUserId);
-
-		const contactExists = me.contact.some(
-			(c) => String(c.user) === String(req.body.user)
-		);
-		if (!contactExists) {
-			return res.status(404).json();
-		}
-		await User.findByIdAndUpdate(
-			myUserId,
-			{
-				$set: {
-					"contact.$[elem].alias": alias,
-				},
-			},
-			{
-				arrayFilters: [{ "elem.user": req.body.user }],
-			}
-		);
-		return res.status(200).json();
+		return res.status(200).json({ message: "Alias updated successfully" });
 	} catch (err) {
 		console.error("Update contact alias error:", err);
 		res.status(500).json();
@@ -97,25 +67,20 @@ router.put("/update-alias", authmiddleware, async (req, res) => {
 // Delete contact
 router.delete("/delete", authmiddleware, async (req, res) => {
 	try {
-		const { user } = req.body; // ID of the contact to delete
-		const myUserId = req.user.id;
-		if (!user) {
-			return res.status(400).json();
-		}
-		const me = await User.findById(myUserId);
-		const contactExists = me.contact.some(
-			(c) => String(c.user) === String(user)
-		);
+		const { user: contactId } = req.body;
+		if (!contactId) return res.status(400).json();
+
+		// Check if the contact exists in the local array
+		const contactExists = req.user.contact.some(c => c.user.toString() === contactId);
+
 		if (!contactExists) {
-			return res.status(404).json();
+			return res.status(404).json({ error: "Contact not found in your list" });
 		}
 
-		await User.findByIdAndUpdate(myUserId, {
-			$pull: {
-				contact: { user: user },
-			},
-		});
-		return res.status(200).json();
+		req.user.contact.pull({ user: contactId });
+		await req.user.save();
+
+		return res.status(204).send();
 	} catch (err) {
 		console.error("Delete contact error:", err);
 		res.status(500).json();

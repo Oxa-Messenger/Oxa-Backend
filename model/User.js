@@ -19,7 +19,7 @@ const userSchema = new mongoose.Schema(
 			match: [/^[a-zA-Z0-9_]+$/, "Invalid username format"],
 			trim: true,
 			minLength: 5,
-			maxLength: 20,
+			maxLength: 20
 		},
 		email: {
 			type: String,
@@ -31,13 +31,11 @@ const userSchema = new mongoose.Schema(
 				/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,})+$/,
 				"Please fill a valid email address",
 			],
-			trim: true,
+			trim: true
 		},
 		password: { type: String, required: true, minlength: 8, select: false },
 		country: { type: String, default: null, trim: true },
 		city: { type: String, default: null, trim: true },
-		//publicKey: { type: String, required: true }, commented for testing/limited time
-		//playIntegrityHash: { type: String, required: true }, commented for testing/limited time
 		token: { type: String, default: null },
 		joinedCommunities: {
 			type: [mongoose.Schema.Types.ObjectId],
