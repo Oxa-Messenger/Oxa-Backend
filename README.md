@@ -19,17 +19,17 @@ The backend is intentionally thin and restricted:
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js |
-| Framework | Express 5 |
-| Database | MongoDB (Mongoose 8) |
-| Real-time | Socket.IO 4 |
-| Auth | JWT (jsonwebtoken), bcrypt |
-| Email | Nodemailer (Gmail) |
+| Layer      | Technology                            |
+| ---------- | ------------------------------------- |
+| Runtime    | Node.js                               |
+| Framework  | Express 5                             |
+| Database   | MongoDB (Mongoose 8)                  |
+| Real-time  | Socket.IO 4                           |
+| Auth       | JWT (jsonwebtoken), bcrypt            |
+| Email      | Nodemailer (Gmail)                    |
 | Validation | express-validator, express-rate-limit |
-| Security | helmet, cors, compression |
-| Testing | Jest, Supertest |
+| Security   | helmet, cors, compression             |
+| Testing    | Jest, Supertest                       |
 
 ---
 
@@ -69,28 +69,28 @@ All routes are prefixed under `/user`.
 
 ### Auth
 
-| Method | Path | Auth Required | Description |
-|--------|------|:---:|---|
-| `POST` | `/user/auth/signup` | No | Register with email, optional username, and password |
-| `POST` | `/user/auth/login` | No (rate-limited) | Login by email or username; returns JWT |
-| `POST` | `/user/auth/logout` | Yes | Invalidates token server-side |
-| `GET`  | `/user/home` | Yes | Returns user profile, contacts, and joined communities/groups |
-| `POST` | `/user/auth/forgot-password` | No (rate-limited) | Send 5-digit OTP to email |
-| `POST` | `/user/auth/reset-password` | No (rate-limited) | Verify OTP and set new password |
+| Method | Path                         |   Auth Required   | Description                                                   |
+| ------ | ---------------------------- | :---------------: | ------------------------------------------------------------- |
+| `POST` | `/user/auth/signup`          |        No         | Register with email, optional username, and password          |
+| `POST` | `/user/auth/login`           | No (rate-limited) | Login by email or username; returns JWT                       |
+| `POST` | `/user/auth/logout`          |        Yes        | Invalidates token server-side                                 |
+| `GET`  | `/user/home`                 |        Yes        | Returns user profile, contacts, and joined communities/groups |
+| `POST` | `/user/auth/forgot-password` | No (rate-limited) | Send 5-digit OTP to email                                     |
+| `POST` | `/user/auth/reset-password`  | No (rate-limited) | Verify OTP and set new password                               |
 
 ### Contacts
 
-| Method | Path | Auth Required | Description |
-|--------|------|:---:|---|
-| `POST`   | `/user/contacts/add` | Yes | Add a contact by email or username |
-| `PUT`    | `/user/contacts/update-alias` | Yes | Rename a contact's local alias |
-| `DELETE` | `/user/contacts/delete` | Yes | Remove a contact |
+| Method   | Path                          | Auth Required | Description                        |
+| -------- | ----------------------------- | :-----------: | ---------------------------------- |
+| `POST`   | `/user/contacts/add`          |      Yes      | Add a contact by email or username |
+| `PUT`    | `/user/contacts/update-alias` |      Yes      | Rename a contact's local alias     |
+| `DELETE` | `/user/contacts/delete`       |      Yes      | Remove a contact                   |
 
 ### Utilities
 
-| Method | Path | Auth Required | Description |
-|--------|------|:---:|---|
-| `GET` | `/user/sensitive-stuff/ice-servers` | Yes | Return cached WebRTC ICE/TURN server credentials |
+| Method | Path                                | Auth Required | Description                                      |
+| ------ | ----------------------------------- | :-----------: | ------------------------------------------------ |
+| `GET`  | `/user/sensitive-stuff/ice-servers` |      Yes      | Return cached WebRTC ICE/TURN server credentials |
 
 ---
 
@@ -100,33 +100,33 @@ The socket connection requires a valid JWT passed via `socket.handshake.auth.tok
 
 ### Client → Server
 
-| Event | Payload | Description |
-|---|---|---|
-| `register` | `{ userId }` | Register presence and receive online contact list |
-| `get_or_create_room` | `{ withUser }` | Get or create a canonical 1:1 room; callback receives `{ roomId, reused }` |
-| `room:join` | `{ roomId }` | Join a room (1:1 or group) |
-| `room:leave` | `{ roomId }` | Leave a room |
-| `notify_waiting` | `{ to }` | Send a ring/push notification to a specific user |
-| `webrtc-offer` | `{ to?, room?, ...sdp }` | Forward WebRTC offer |
-| `webrtc-answer` | `{ to?, room?, ...sdp }` | Forward WebRTC answer |
-| `webrtc-ice` | `{ to?, room?, ...candidate }` | Forward ICE candidate |
+| Event                | Payload                        | Description                                                                |
+| -------------------- | ------------------------------ | -------------------------------------------------------------------------- |
+| `register`           | `{ userId }`                   | Register presence and receive online contact list                          |
+| `get_or_create_room` | `{ withUser }`                 | Get or create a canonical 1:1 room; callback receives `{ roomId, reused }` |
+| `room:join`          | `{ roomId }`                   | Join a room (1:1 or group)                                                 |
+| `room:leave`         | `{ roomId }`                   | Leave a room                                                               |
+| `notify_waiting`     | `{ to }`                       | Send a ring/push notification to a specific user                           |
+| `webrtc-offer`       | `{ to?, room?, ...sdp }`       | Forward WebRTC offer                                                       |
+| `webrtc-answer`      | `{ to?, room?, ...sdp }`       | Forward WebRTC answer                                                      |
+| `webrtc-ice`         | `{ to?, room?, ...candidate }` | Forward ICE candidate                                                      |
 
 ### Server → Client
 
-| Event | Payload | Description |
-|---|---|---|
-| `registered` | `{ ok, err? }` | Confirms registration success or failure |
-| `users_list` | `{ users: string[] }` | List of currently online mutual contacts |
-| `user_online` | `{ userId }` | A mutual contact came online |
-| `user_offline` | `{ userId }` | A mutual contact went offline |
-| `session_terminated` | `{ reason }` | Sent to old session when a new login is detected |
-| `room:sync` | `{ roomId, peers, initiator }` | Current room state sent on join |
-| `room:user-joined` | `{ roomId, userId }` | A peer joined the room |
-| `room:user-left` | `{ roomId, userId }` | A peer left the room |
-| `notify_waiting` | `{ from }` | Incoming ring/push from another user |
-| `webrtc-offer` | `{ from, ...sdp }` | Forwarded WebRTC offer |
-| `webrtc-answer` | `{ from, ...sdp }` | Forwarded WebRTC answer |
-| `webrtc-ice` | `{ from, ...candidate }` | Forwarded ICE candidate |
+| Event                | Payload                        | Description                                      |
+| -------------------- | ------------------------------ | ------------------------------------------------ |
+| `registered`         | `{ ok, err? }`                 | Confirms registration success or failure         |
+| `users_list`         | `{ users: string[] }`          | List of currently online mutual contacts         |
+| `user_online`        | `{ userId }`                   | A mutual contact came online                     |
+| `user_offline`       | `{ userId }`                   | A mutual contact went offline                    |
+| `session_terminated` | `{ reason }`                   | Sent to old session when a new login is detected |
+| `room:sync`          | `{ roomId, peers, initiator }` | Current room state sent on join                  |
+| `room:user-joined`   | `{ roomId, userId }`           | A peer joined the room                           |
+| `room:user-left`     | `{ roomId, userId }`           | A peer left the room                             |
+| `notify_waiting`     | `{ from }`                     | Incoming ring/push from another user             |
+| `webrtc-offer`       | `{ from, ...sdp }`             | Forwarded WebRTC offer                           |
+| `webrtc-answer`      | `{ from, ...sdp }`             | Forwarded WebRTC answer                          |
+| `webrtc-ice`         | `{ from, ...candidate }`       | Forwarded ICE candidate                          |
 
 ---
 
@@ -160,16 +160,16 @@ PORT=10000
 ICE_SERVER_API_KEY=https://your-metered-turn-api-url
 ```
 
-| Variable | Description |
-|---|---|
-| `MONGO_URI` | MongoDB connection string |
-| `SALT_ROUNDS` | bcrypt salt rounds |
-| `EMAIL_FROM` | Gmail sender address |
-| `EMAIL_PASS` | Gmail app password (not your account password) |
-| `JWT_SECRET` | Secret key for signing JWTs |
-| `CORS_ORIGIN` | Allowed CORS origin |
-| `PORT` | HTTP server port |
-| `ICE_SERVER_API_KEY` | Metered TURN API URL for WebRTC |
+| Variable             | Description                                    |
+| -------------------- | ---------------------------------------------- |
+| `MONGO_URI`          | MongoDB connection string                      |
+| `SALT_ROUNDS`        | bcrypt salt rounds                             |
+| `EMAIL_FROM`         | Gmail sender address                           |
+| `EMAIL_PASS`         | Gmail app password (not your account password) |
+| `JWT_SECRET`         | Secret key for signing JWTs                    |
+| `CORS_ORIGIN`        | Allowed CORS origin                            |
+| `PORT`               | HTTP server port                               |
+| `ICE_SERVER_API_KEY` | Metered TURN API URL for WebRTC                |
 
 ### 4. Run the server
 

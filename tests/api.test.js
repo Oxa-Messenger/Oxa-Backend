@@ -32,11 +32,13 @@ const TIMESTAMP = Date.now();
 const TEST_USER = {
 	username: `user_${TIMESTAMP.toString().slice(-8)}`,
 	email: `tes.t_${TIMESTAMP}@example.com`,
+	email: `tes.t_${TIMESTAMP}@example.com`,
 	password: "Password123!",
 };
 
 const CONTACT_USER = {
 	username: `cont_${TIMESTAMP.toString().slice(-8)}`,
+	email: `contac.t_${TIMESTAMP}@example.com`,
 	email: `contac.t_${TIMESTAMP}@example.com`,
 	password: "Password123!",
 };
@@ -59,6 +61,7 @@ afterAll(async () => {
 		await mongoose.connection.db.dropDatabase();
 	}
 	await mongoose.disconnect();
+	await mongoose.disconnect();
 });
 
 describe("Oxa Backend Comprehensive Test Suite", () => {
@@ -78,6 +81,7 @@ describe("Oxa Backend Comprehensive Test Suite", () => {
 				.post("/user/auth/signup")
 				.send({
 					...TEST_USER,
+					email: "bad-ema.il-format",
 					email: "bad-ema.il-format",
 				});
 			expect(res.statusCode).toBe(400);
